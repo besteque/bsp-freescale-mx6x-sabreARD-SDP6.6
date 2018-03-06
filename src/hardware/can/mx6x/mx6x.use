@@ -1,0 +1,26 @@
+%C - CAN driver for i.MX6x CAN Controller (FlexCAN)
+
+%C [options] ["can#"[,sysirq]] ["ringocan#"]
+
+can#        is can0 or can1
+sysirq      is CAN system interrupt number
+ringocan#   is ringocan0 or ringocan1 that defines defaults for i.MX6x board
+
+Options:
+ -a                                     Disable autobus (default ON)
+ -b string                              Predefined bitrate (50K, 125K, 250K, 500K, 1M, default 50K)
+ -B presdiv,propseg,pseg1,pseg2,rjw     Manually define bitrate
+ -D                                     Disable mini-driver init if it is present and running (default enabled)
+ -i midrx[,midtx]                       Starting receive and transmit message ID (default 0x100C0000)
+ -l number                              CAN message data size (0 - 8 bytes, default 8). (DEPRECATED - driver always sends up to 8 bytes max).
+ -m number                              Initial local timestamp
+ -n number                              Size of each device mailbox message buffer (default 100)
+ -R                                     Enable Raw mode, send and receive both standard and extended messages (does not require -x)
+ -s                                     Enable triple bitrate sample (default single sample)
+ -S                                     Sort mdriver message based on MID (default all stored in first device)
+ -t                                     Enable self-test loopback mode (default disabled)
+ -u number                              CAN unit number (default 1)
+ -v                                     Listen only Mode
+ -w                                     Lowest number buffer is transmitted first
+ -x                                     Enable extended 29 bit CAN message ID (default standard 11 bit MID)
+ -z                                     Enable Timer Sync feature

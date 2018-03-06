@@ -1,0 +1,1 @@
+CCFLAGS += -Os

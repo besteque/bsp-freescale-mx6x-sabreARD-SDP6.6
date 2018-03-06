@@ -1,0 +1,647 @@
+####################################################################################
+#
+# Neutrino 6.6.0 on the Freescale i.MX6 Quad and Solo Sabre-ARD Boards,
+# based on ARM Cortex A9-MPCore Platform
+#
+####################################################################################
+#
+# On-board devices:
+# ----------------
+#
+# device:   i.MX6Q UART4
+#       devc-sermx1 -e -F -S -c80000000 0x021F0000,61
+#
+# device:   i.MX6Q I2C
+#       i2c-imx -p 0x021A4000 -i69 -c66000000 --u 2
+#       i2c-imx -p 0x021A8000 -i70 -c66000000 --u 3
+#
+# device:   i.MX6Q USB OTG
+#      io-usb -dehci-mx28 ioport=0x02184100,irq=75,phy=0x020c9000,verbose=5
+#
+# device:   watchdog Timer
+#      wdtkick
+#
+# device:   SRTC
+# RTC:      rtc hw  or  rtc -s hw
+#
+# device: i.MX6Q FlexCAN
+#     dev-can-mx6x can0
+####################################################################################
+[image=0x10800000]
+#[virtual=armle-v7,raw +compress] .bootstrap = {
+[virtual=armle-v7,raw] .bootstrap = {
+    #
+    # Options specific to this BSP:
+    #
+    # Watchdog option:
+    #   -W:  watchdog startup option (wdtkick should be uncommented
+    #        when using this option)
+    #
+    # NOR Flash options (only ONE option may be selected):
+    #   -n0: no NOR Flash (I2C3 enabled)
+    #   -n1: parallel NOR Flash (I2C3 disabled)
+    #   -n2: SPI NOR Flash (I2C3 disabled)
+    #
+    # CAN option (conflicts with Ethernet):
+    #   -c: CAN startup option
+    #
+    # Load IFS option:
+    #   -s: Use SDMA to load IFS
+    #
+    # Use the -r option to startup to reserve the top 256M of RAM (0x80000000 --
+    # 0x8FFFFFFF) so that screen will work properly. There is an issue with the 
+    # graphics processor on the i.MX6 Quad Plus  where the code will not run if 
+    # allocated in this block of memory. This is an interm fix until the problem 
+    # is resolved by Freescale.
+    #startup-imx6x-sabreARD -n0 -m -r 0x80000000,256M
+    # Otherwise use the following version of startup to access the full range of
+    # RAM
+    startup-imx6x-sabreARD -n0 -m
+
+    PATH=:/proc/boot:/bin:/sbin:/usr/bin:/usr/sbin LD_LIBRARY_PATH=:/proc/boot:/lib:/usr/lib:/lib/dll procnto-smp-instr
+}
+[+script] .script = {
+# Initialise the console
+    procmgr_symlink ../../proc/boot/libc.so.3 /usr/lib/ldqnx.so.2
+    devc-sermx1 -e -F -S -c80000000 0x021F0000,61
+
+    #######################################################################
+    ## For mini-can test
+    #######################################################################
+    #dev-can-mx6x -n 500 can0
+    #waitfor /dev/can0/rx0 4
+    #ksh -c "cat /dev/can0/rx0 > /dev/shmem/mdat.txt &"
+
+
+
+    reopen
+    display_msg
+    display_msg Welcome to QNX Neutrino 6.6.0 on the Freescale i.mx6 Quad/Dual/DualLite/Solo/QuadPlus Sabre-ARD RevB (ARM Cortex-A9 MPCore)
+    display_msg
+    slogger &
+
+    # Start some common servers
+    pipe &
+
+    #######################################################################
+    ## WatchDog utility
+    ## If startup is given '-W' parameter then the 'wdtkick' utility MUST
+    ## be uncommented below.
+    #######################################################################
+    #display_msg Starting watchdog...
+    #wdtkick
+
+    #######################################################################
+    ## I2C driver
+    #######################################################################
+    display_msg Starting I2C1,2,3 driver (/dev/i2c1,2,3)...
+    i2c-imx -p 0x021A4000 -i69 -c66000000 --u 2
+    i2c-imx -p 0x021A8000 -i70 -c66000000 --u 3
+
+    #######################################################################
+    ## SD memory card driver
+    #######################################################################
+    display_msg Starting SD3 memory card driver...
+    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x02198000,irq=56,bs=cd=0x020b0000^15^335:wp=0x0209c000^13^173 disk name=sd3
+
+    display_msg Starting SD1 (microSD connector) memory card driver on the base board...
+    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x02190000,irq=54,bs=cd=0x0209c000^1^161:wp=0x020ac000^20^309 disk name=sd1
+
+    #######################################################################
+    ## SST 25VF016B SPI Flash Chip
+    ## To use this driver, ensure the following conditions:
+    ##   - spi-master resource manager must NOT be running
+    ##   - the '-n2' option must be used in the startup command line
+    ##   - the jumper J3 must be set to SPI NOR boot (pins 2-3). If no 
+    ##     bootloader is found in SPI NOR Flash, the board will boot from SD.
+    #######################################################################
+    #display_msg Starting SPI NOR Flash
+    #devf-norspi-mx6_sabreARD-ecspi
+
+    #######################################################################
+    ## CAN
+    #######################################################################
+    #dev-can-mx6x -b250K can0
+
+    #######################################################################
+    ## RTC
+    #######################################################################
+    #display_msg Starting RTC utility...
+    #rtc hw
+
+    #######################################################################
+    ## AUDIO driver
+    #######################################################################
+    display_msg Starting ESAI audio driver...
+    io-audio -d mxesai-mx6sabreARD
+    waitfor /dev/snd 4
+
+    #######################################################################
+    ## SATA driver
+    #######################################################################
+    display_msg Starting SATA driver (Quad and Dual processors only)...
+    devb-ahci ahci ioport=0x02200000,irq=71
+
+    #######################################################################
+    ## ECSPI driver
+    ## The SabreARD has one directly accessible SPI based component - a
+    ## SPI NOR Flash chip.
+    ## Since the SPI NOR driver does not use the QNX SPI framework, there
+    ## is no need to launch spi-master at all for this board.
+    ## However, the commands below provide examples of how to launch the
+    ## ECSPI drivers.
+    ## Note that the parameters to spi-master will need to be adjusted
+    ## according to the target hardware.
+    ## Note also that the devf-norspi-mx6_sabreARD-ecspi driver must not
+    ## be running at the same time as the spi-master driver
+    #######################################################################
+
+    # Starting Enhanced SPI driver ECSPI1 (/dev/spi1)
+    # spi-master -u1 -d mx51ecspi base=0x02008000,irq=63,loopback=1
+
+    # Starting Enhanced SPI driver ECSPI2 (/dev/spi2)
+    # spi-master -u2 -d mx51ecspi base=0x0200C000,irq=64,loopback=1
+
+    # Starting Enhanced SPI driver ECSPI3 (/dev/spi3)
+    # spi-master -u3 -d mx51ecspi base=0x02010000,irq=65,loopback=1
+
+    # Starting Enhanced SPI driver ECSPI4 (/dev/spi4)
+    # spi-master -u4 -d mx51ecspi base=0x02014000,irq=66,loopback=1
+
+    # Starting Enhanced SPI driver ECSPI5 (/dev/spi5)
+    # spi-master -u5 -d mx51ecspi base=0x02018000,irq=67,loopback=1
+
+
+    #######################################################################
+    ## USB OTG controllers
+    #######################################################################
+    display_msg Starting USB OTG driver
+    io-usb -dehci-mx28 ioport=0x02184100,irq=75,phy=0x020c9000,verbose=5 -dehci-mx28 ioport=0x02184300,irq=72,phy=0x020ca000,verbose=5
+    waitfor /dev/io-usb/io-usb 4
+    waitfor /dev/io-usb/devu-ehci-mx28.so 4
+
+    display_msg Launching devb-umass...
+    devb-umass cam pnp &
+
+    #######################################################################
+    ## Networking
+    #######################################################################
+    display_msg Starting Ethernet driver
+    io-pkt-v4 -dmx6x speed=100,duplex=1
+
+    waitfor /dev/socket
+    #dhcp.client &
+
+    #######################################################################
+    ## Parallel NOR Flash
+    ## To use this driver, ensure the following conditions:
+    ##   - SPI NOR must NOT be running
+    ##   - screen must NOT be running
+    ##   - the '-n1' option must be used in the startup command line
+    #######################################################################
+    #display_msg Starting Parallel NOR Flash
+    #devf-generic -x -s0x08000000,32M
+
+    #######################################################################
+    ## PMIC
+    #######################################################################
+    #display_msg Starting PMIC
+    #pmic-pmpf0100 -b2 -i304 -v5 -a 0x08 &
+
+    #######################################################################
+    ## REMOTE_DEBUG (gdb or Momentics)
+    ##  - refer to the help documentation for the gdb, qconn and the IDE
+    ##    for more information on remote debugging
+    ##  - the commands shown require that NETWORK is enabled too
+    #######################################################################
+
+
+    [+session] sh /proc/boot/.console.sh &
+}
+
+# Redirect console messages
+[type=link] /bin/sh=/proc/boot/ksh
+[type=link] /dev/console=/dev/ser1
+[type=link] /tmp=/dev/shmem
+
+# Programs require the runtime linker (ldqnx.so) to be at a fixed location
+
+# Shared libraries
+libc.so
+libm.so.2
+
+###########################################################################
+## C++ lib required for GPU
+###########################################################################
+libcpp.so.4
+
+###########################################################################
+## uncomment for USB HOST driver
+###########################################################################
+devu-ehci-mx28.so
+libusbdi.so
+devu-ohci.so
+devh-usb.so
+libhiddi.so
+
+###########################################################################
+## uncomment for BLOCK driver
+## substitute cam-xxx.so and fs-xxx.so with the cam drivers and filesystems
+## required
+###########################################################################
+libcam.so
+io-blk.so
+cam-disk.so
+cam-cdrom.so
+fs-qnx6.so
+fs-qnx4.so
+fs-dos.so
+fs-udf.so
+fs-cd.so
+
+###########################################################################
+## uncomment for NETWORK driver
+###########################################################################
+devnp-mx6x.so
+libsocket.so
+# support asix based USB to Ethernet dongles
+devnp-asix.so
+
+###########################################################################
+## uncomment for ECSPI
+###########################################################################
+spi-mx51ecspi.so
+
+###########################################################################
+## AUDIO
+###########################################################################
+deva-ctrl-mxesai-mx6sabreARD.so
+deva-util-restore.so
+libasound.so
+libasound.so.2
+libaudio_manager.so.1
+
+###########################################################################
+## SDMA
+###########################################################################
+libdma-sdma-imx6x.so
+
+###########################################################################
+## PPS
+###########################################################################
+libpps.so.1
+
+###########################################################################
+## CSM
+###########################################################################
+libcsm.so.1
+
+###########################################################################
+## Tracelog
+###########################################################################
+libtracelog.so.1
+
+###########################################################################
+## touchscreen driver for HannStar HSD100PXN1 10" display
+###########################################################################
+#libmtouch-egalax.so
+#libdisputil.so.2
+
+###########################################################################
+## Graphics support - screen
+###########################################################################
+#libWFD.so.1
+#libinputevents.so.1
+#libkalman.so.1
+#libGAL-gc320v0.so.1
+#screen-gc320v0.so
+#/usr/lib/graphics/iMX6X/libWFDimx6x.so=graphics/iMX6X/libWFDimx6x.so
+#/usr/lib/graphics/iMX6X/libGalcore-3dvg.so=graphics/iMX6X/libGalcore-3dvg.so
+#/usr/lib/graphics/iMX6X/libimx6xCSCgamma-generic.so=graphics/iMX6X/libimx6xCSCgamma-generic.so
+
+#[search=../install/armle-v7/usr/lib/graphics/iMX6X] /usr/lib/graphics/iMX6X/libwfdcfg-imx6x-hdmi.so=libwfdcfg-imx6x-hdmi.so
+#[search=../install/armle-v7/usr/lib/graphics/iMX6X] /usr/lib/graphics/iMX6X/graphics.conf=graphics.conf
+
+###########################################################################
+## Graphics support - apps
+###########################################################################
+#libEGL.so.1
+#libscreen.so.1
+#/usr/lib/graphics/iMX6X/libGLESv1_CM.so.1=libGLESv1_CM.so.1
+#/usr/lib/graphics/iMX6X/libGLESv2.so.1=libGLESv2.so.1
+#/usr/lib/graphics/iMX6X/libEGL_viv.so=graphics/iMX6X/libEGL_viv.so
+#/usr/lib/graphics/iMX6X/libGLES_CM_viv.so=graphics/iMX6X/libGLES_CM_viv.so
+#/usr/lib/graphics/iMX6X/libGLESv2_viv.so=graphics/iMX6X/libGLESv2_viv.so
+#/usr/lib/graphics/iMX6X/libGLSLC.so=graphics/iMX6X/libGLSLC.so
+
+
+# Executables
+[data=c]
+devc-sermx1
+
+###########################################################################
+## Screen executables
+###########################################################################
+#/sbin/screen=screen
+#/usr/bin/gles1-gears=gles1-gears
+#/usr/bin/gles2-gears=gles2-gears
+#/usr/bin/sw-vsync=sw-vsync
+
+
+###########################################################################
+## uncomment for NETWORK driver
+###########################################################################
+io-pkt-v4
+nicinfo
+ping
+ftp
+fs-nfs3
+fs-cifs
+ifconfig
+dhcp.client
+if_up
+
+###########################################################################
+## uncomment for CAN driver
+###########################################################################
+dev-can-mx6x
+canctl
+canutil
+
+## mini driver utilities
+mdriver-can
+mdriver-cantest
+mdriver-data
+mdriver-info
+mdriver-timer
+minitimer-driver
+
+#######################################################################
+## uncomment for RTC utility
+#######################################################################
+rtc
+
+###########################################################################
+## uncomment for REMOTE_DEBUG
+###########################################################################
+devc-pty
+qconn
+/usr/bin/pdebug=pdebug
+
+###########################################################################
+## uncomment for Block driver
+###########################################################################
+devb-sdmmc-mx6_generic
+fdisk
+mkdosfs
+
+###########################################################################
+## uncomment for SPI NOR FLASH (SST 25VF016B Flash driver)
+## Note: the SPI Flash chip can be formatted as follows:
+##       flashctl -p /dev/fs0p0 -e -f -m
+##       After formatting a partition will appear in /fs0p0
+###########################################################################
+#devf-norspi-mx6_sabreARD-ecspi
+#flashctl
+
+###########################################################################
+## uncomment for parallel NOR Flash
+###########################################################################
+#devf-generic
+#flashctl
+
+###########################################################################
+## uncomment for ECSPI
+###########################################################################
+spi-master
+
+###########################################################################
+## I2C driver
+###########################################################################
+i2c-imx
+
+###########################################################################
+## AUDIO
+###########################################################################
+io-audio
+wave
+waverec
+mix_ctl
+
+###########################################################################
+## Workaround needed for touchscreen driver (supports HannStar HSD100PXN1
+## display).
+###########################################################################
+[type=link] /dev/devi=/dev/null
+
+###########################################################################
+## uncomment for disk drivers (filesystems support)
+###########################################################################
+/sbin/fdisk=fdisk
+/sbin/mkdosfs=mkdosfs
+/sbin/mkqnx6fs=mkqnx6fs
+/sbin/chkdosfs=chkdosfs
+/sbin/chkqnx6fs=chkqnx6fs
+/sbin/chkfsys=chkfsys
+/usr/bin/fsysinfo=fsysinfo
+
+###########################################################################
+## uncomment for USB HOST driver
+###########################################################################
+io-usb
+usb
+
+###########################################################################
+## uncomment for WatchDog utility
+###########################################################################
+wdtkick
+
+###########################################################################
+## uncomment for SATA driver
+###########################################################################
+devb-ahci
+
+###########################################################################
+## PMIC driver support files
+###########################################################################
+pmic-pmpf0100
+
+###########################################################################
+## Set environment and start the main shell
+###########################################################################
+[perms=0744] .console.sh={
+echo setting env variables.
+
+export SYSNAME=nto
+export TERM=qansi
+export HOME=/
+export PATH=:/bin:/usr/bin:/sbin:/usr/sbin:/proc/boot:/tmp
+export LD_LIBRARY_PATH=:/lib:/usr/lib:/usr/lib/graphics/iMX6X:/lib/dll:/proc/boot:/tmp
+export GRAPHICS_ROOT=/usr/lib/graphics/iMX6X
+
+#start demo if it exists
+demo=/proc/boot/.start-demo
+if [ -e "$demo" ]; then
+   #demo uses dhclinet instead of dhcp.client
+   . "$demo"
+else
+   dhcp.client &
+
+   #######################################################################
+   ## Start the screen graphics
+   #######################################################################
+   #echo Starting Screen Graphics...
+   #screen
+   #echo done.
+
+fi
+
+ksh -l
+}
+
+###########################################################################
+## general commands
+###########################################################################
+cp
+ls
+cat
+ksh
+pipe
+pidin
+uname
+slogger
+sloginfo
+slay
+mount
+umount
+use
+date
+shutdown
+devb-umass
+chmod
+ln
+rm
+mv
+sleep
+random
+dd
+top
+grep
+df
+elvis
+find
+hostname
+mkdir
+more
+netstat
+pwd
+route
+tracelogger
+waitfor
+echo
+dumper
+
+###########################################################################
+## Commands required for i.MX6Q-SabreARD
+###########################################################################
+wdtkick
+ksh
+
+###########################################################################
+## uncomment for debugging support
+###########################################################################
+#devc-pty
+#ftpd
+#inetd
+#/bin/login = login
+#pdebug
+#qconn
+#telnetd
+
+#/etc/services = ../tools/qnx650/target/qnx6/etc/services
+
+#/etc/inetd.conf = {
+#ftp        stream tcp nowait root  /proc/boot/ftpd           in.ftpd -l
+#telnet     stream tcp nowait root  /proc/boot/telnetd        in.telnetd
+#}
+
+#/etc/ftpusers = {
+#/* Allow all users to connect to the ftp server */
+#* allow
+#}
+
+#/etc/ftpd.conf = {
+#/* Make things a+rw by default */
+#umask all 0000
+#}
+#
+#/etc/passwd = {
+#root::0:0:Superuser:/root:/bin/sh
+#ftp::14:80:FTP User:/tmp:
+#}
+
+
+###########################################################################
+## END OF BUILD SCRIPT
+###########################################################################
+
+###########################################################################
+##
+## INTERRUPT MAP (i.mx6DQ)
+##
+###########################################################################
+##
+##
+## vector: 0 - 31
+## device: reserved
+##
+## vector 32 - 158
+## device: same IRQs as defined in i.MX6Q TRM
+##
+## vector 159
+## device: reserved
+##
+## GPIO interrupts are cascaded.  Individual GPIO IRQs are defined below
+## vector 160 - 175
+## device: GPIO1[1 - 15]
+##
+## vector 176 - 191
+## device: GPIO1[16 - 31]
+##
+## vector 192 - 207
+## device: GPIO2[1 - 15]
+##
+## vector 208 - 223
+## device: GPIO2[16 - 31]
+##
+## vector 224 - 239
+## device: GPIO3[1 - 15]
+##
+## vector 240 - 255
+## device: GPIO3[16 - 31]
+##
+## vector 256 - 271
+## device: GPIO4[1 - 15]
+##
+## vector 272 - 287
+## device: GPIO4[16 - 31]
+##
+## vector 288 - 303
+## device: GPIO5[1 - 15]
+##
+## vector 305 - 319
+## device: GPIO5[16 - 31]
+##
+## vector 320 - 335
+## device: GPIO6[1 - 15]
+##
+## vector 336 - 351
+## device: GPIO6[16 - 31]
+##
+## vector 352 - 367
+## device: GPIO7[1 - 15]
+##
+## vector 368 - 383
+## device: GPIO7[16 - 31]
+##
+###########################################################################

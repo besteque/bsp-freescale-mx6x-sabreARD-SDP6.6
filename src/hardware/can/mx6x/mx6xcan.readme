@@ -1,0 +1,1110 @@
+*************************************************
+    General CAN Operation & Loopback Testing
+*************************************************
+
+1. Start CAN driver in self-test mode
+
+# dev-can-mx6x -t ringocan0
+
+# ls /dev/can0/
+rx0     rx15    rx21    rx28    rx7     tx36    tx43    tx50    tx57
+rx1     rx16    rx22    rx29    rx8     tx37    tx44    tx51    tx58
+rx10    rx17    rx23    rx3     rx9     tx38    tx45    tx52    tx59
+rx11    rx18    rx24    rx30    tx32    tx39    tx46    tx53    tx60
+rx12    rx19    rx25    rx4     tx33    tx40    tx47    tx54    tx61
+rx13    rx2     rx26    rx5     tx34    tx41    tx48    tx55    tx62
+rx14    rx20    rx27    rx6     tx35    tx42    tx49    tx56
+
+In this mode, the transmitter and receiver of the CAN device are looped back.
+The message ID's (MID's) of the transmit and receive device mailboxes are
+configured by default such that:
+
+Device Mailbox  MID
+============================
+RX0/TX32        0x100C0000
+RX1/TX33        0x101C0000
+RX2/TX34        0x102C0000
+RX3/TX35        0x103C0000
+RX4/TX36        0x104C0000
+RX5/TX37        0x105C0000
+RX6/TX38        0x106C0000
+RX7/TX39        0x107C0000
+RX8/TX40        0x108C0000
+RX9/TX41        0x109C0000
+RX10/TX42       0x10AC0000
+RX11/TX43       0x10BC0000
+RX12/TX44       0x10CC0000
+RX13/TX45       0x10DC0000
+RX14/TX46       0x10EC0000
+RX15/TX47       0x10FC0000
+RX16/TX48       0x110C0000
+RX17/TX49       0x111C0000
+RX18/TX50       0x112C0000
+RX19/TX51       0x113C0000
+RX20/TX52       0x114C0000
+RX21/TX53       0x115C0000
+RX22/TX54       0x116C0000
+RX23/TX55       0x117C0000
+RX24/TX56       0x118C0000
+RX25/TX57       0x119C0000
+RX26/TX58       0x11AC0000
+RX27/TX59       0x11BC0000
+RX28/TX60       0x11CC0000
+RX29/TX61       0x11DC0000
+RX30/TX62       0x11EC0000
+
+Therefore, all messages transmitted with MID 0x101C0000 (TX33) will be
+received by any receivers with a filter for MID 0x101C0000 - RX1 in this case.
+The number of RX/TX devices are not configurable are defaulted to 31 RX and 31 TX
+each of the 62 available Mailboxes.
+NOTE: there are actually 64 mailboxes but errata ERR005829 requires the first
+mailbox to be reserved and we have also reserved the last one to balance the
+number of rx and tx mailboxes.
+The MID's of each individual Mailbox is configurable.
+
+2. Run a client application to read CAN messages on the first receive mailbox
+
+# cat /dev/can0/rx0 &
+
+3. Transmit a CAN message to the first receive device mailbox
+
+# echo testing > /dev/can0/tx32
+testing
+
+# echo testing > /dev/can0/tx32
+testing
+
+NOTE: RX0 and TX32 are configured with the same message ID (MID).
+
+4. Data must be less than or equal to 8 bytes - if it is larger, no
+CAN message is transmitted (an error is returned from the write() fuction)
+
+# echo testimony > /dev/can0/tx32
+
+No data is transmitted/received.
+
+5. Transmit CAN messages to the second receive device mailbox
+
+# echo tstdat1 > /dev/can0/tx33
+# echo tstdat2 > /dev/can0/tx33
+# echo tstdat3 > /dev/can0/tx33
+# echo tstdat4 > /dev/can0/tx33
+
+NOTE: No data is displayed since there is no client reading from the device
+
+6. Run a client application to read CAN messages on the second receive device mailbox
+
+# cat /dev/can0/rx1 &
+
+tstdat1
+tstdat2
+tstdat3
+tstdat4
+
+NOTE: Data previously received by the device is printed to the console.
+
+7. Run a client application to read CAN messages on the last receive device mailbox
+
+# cat /dev/can0/rx30 &
+
+8. Transmit CAN messages to the last receive device mailbox
+
+echo testing > /dev/can0/tx62
+
+testing
+
+9. Attempt to write to a receive device mailbox
+
+# echo testing > /dev/can0/rx5
+
+Nothing happens and write() function returns with an error.
+
+10. Attempt to read from transmit device mailbox
+
+# cat /dev/can0/tx37
+
+/dev/can0/tx37: Not supported
+
+11. Run a stress test on the device
+
+# while true
+> do
+> echo testing > /dev/can0/tx32
+> done
+
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+.
+.
+.
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+
+<ctrl+c> to stop
+
+CAN messages transmitted from devices with matching receivers will behave
+as previously described.  CAN message transmitted from devices with non-matching
+receivers may or may not be received depending on the message filtering
+configuration.
+
+12. Transmit and receive on all channels one after the other
+
+# Start all CAN rx channels
+start=0
+numChannels=31
+let end=$start+$numChannels-1
+while [ start -le ${end} ];
+do
+    echo Starting rx${start}
+    cat /dev/can0/rx${start} &
+    let start=start+1
+done
+
+Starting rx0
+[1] 544786
+Starting rx1
+[2] 544787
+Starting rx2
+[3] 544789
+.
+.
+.
+[29] 651310
+Starting rx29
+[30] 655407
+Starting rx30
+[31] 659504
+
+
+# Send 1 CAN message on each CAN tx channel
+start=32
+numChannels=31
+let end=$start+$numChannels-1
+while [ start -le ${end} ];
+do
+    echo Sending message: Mesg_${start}
+    echo Mesg_${start}> /dev/can0/tx${start}
+    let start=start+1
+done
+
+Sending message: Mesg_32
+Sending message: Mesg_33
+Mesg_32
+Sending message: Mesg_34
+Mesg_33
+Sending message: Mesg_35
+Mesg_34
+.
+.
+.
+Sending message: Mesg_61
+Mesg_60
+Sending message: Mesg_62
+Mesg_61
+Mesg_62
+
+
+
+
+13. Restart CAN driver custom unit number
+
+# slay dev-can-mx6x
+# dev-can-mx6x -t -u5 can0
+
+# ls /dev/can5
+rx0     rx15    rx21    rx28    rx7     tx36    tx43    tx50    tx57
+rx1     rx16    rx22    rx29    rx8     tx37    tx44    tx51    tx58
+rx10    rx17    rx23    rx3     rx9     tx38    tx45    tx52    tx59
+rx11    rx18    rx24    rx30    tx32    tx39    tx46    tx53    tx60
+rx12    rx19    rx25    rx4     tx33    tx40    tx47    tx54    tx61
+rx13    rx2     rx26    rx5     tx34    tx41    tx48    tx55    tx62
+rx14    rx20    rx27    rx6     tx35    tx42    tx49    tx56
+
+14. Confirm TX/RX continues to work
+
+# cat /dev/can5/rx0 &
+# echo testing > /dev/can5/tx32
+testing
+
+15. Restart driver to handle CAN0 and CAN1
+
+# slay dev-can-mx6x
+# dev-can-mx6x -t can0 can1
+
+# ls /dev/can0
+rx0     rx15    rx21    rx28    rx7     tx36    tx43    tx50    tx57
+rx1     rx16    rx22    rx29    rx8     tx37    tx44    tx51    tx58
+rx10    rx17    rx23    rx3     rx9     tx38    tx45    tx52    tx59
+rx11    rx18    rx24    rx30    tx32    tx39    tx46    tx53    tx60
+rx12    rx19    rx25    rx4     tx33    tx40    tx47    tx54    tx61
+rx13    rx2     rx26    rx5     tx34    tx41    tx48    tx55    tx62
+rx14    rx20    rx27    rx6     tx35    tx42    tx49    tx56
+
+# ls /dev/can1
+rx0     rx15    rx21    rx28    rx7     tx36    tx43    tx50    tx57
+rx1     rx16    rx22    rx29    rx8     tx37    tx44    tx51    tx58
+rx10    rx17    rx23    rx3     rx9     tx38    tx45    tx52    tx59
+rx11    rx18    rx24    rx30    tx32    tx39    tx46    tx53    tx60
+rx12    rx19    rx25    rx4     tx33    tx40    tx47    tx54    tx61
+rx13    rx2     rx26    rx5     tx34    tx41    tx48    tx55    tx62
+rx14    rx20    rx27    rx6     tx35    tx42    tx49    tx56
+
+16. CAN1 device should behave the same as CAN0, i.e.
+
+# cat /dev/can1/rx0 &
+# echo testing > /dev/can1/tx32
+testing
+
+17. Driver defaults are pre-defined for the Ringo board, i.e.
+
+dev-can-mx6x -t ringocan0 ringocan1
+
+starts the driver with the proper port and IRQ's for the Ringo board.
+
+Note that thie "can0" & "can1" options are also defaults for the Ringo board, i.e.
+
+dev-can-mx6x -t can0 can1
+
+is equivalent to
+
+dev-can-mx6x -t ringocan0 ringocan1
+
+18. The driver IRQ's can be overriden if the driver is run on a different board, i.e.
+
+dev-can-mx6x -t can0,sysirq can1,sysirq
+
+*************************************************
+    CAN Operation Between 2 Ringo mx6x Boards
+*************************************************
+If two boards are connected via this interface, they communicate via the CAN bus.
+
+1. Start the CAN driver on Ringo mx6x board #1
+
+# dev-can-mx6x can0
+
+2. Start the CAN driver on Ringo mx6x board #2
+
+# dev-can-mx6x can0
+
+3. With the default configuration, the MID's of both drivers running on the two boards
+should correspond:
+
+Device Mailbox  MID
+============================
+RX0/TX32        0x100C0000
+RX1/TX33        0x101C0000
+RX2/TX34        0x102C0000
+RX3/TX35        0x103C0000
+RX4/TX36        0x104C0000
+RX5/TX37        0x105C0000
+RX6/TX38        0x106C0000
+RX7/TX39        0x107C0000
+RX8/TX40        0x108C0000
+RX9/TX41        0x109C0000
+RX10/TX42       0x10AC0000
+RX11/TX43       0x10BC0000
+RX12/TX44       0x10CC0000
+RX13/TX45       0x10DC0000
+RX14/TX46       0x10EC0000
+RX15/TX47       0x10FC0000
+RX16/TX48       0x110C0000
+RX17/TX49       0x111C0000
+RX18/TX50       0x112C0000
+RX19/TX51       0x113C0000
+RX20/TX52       0x114C0000
+RX21/TX53       0x115C0000
+RX22/TX54       0x116C0000
+RX23/TX55       0x117C0000
+RX24/TX56       0x118C0000
+RX25/TX57       0x119C0000
+RX26/TX58       0x11AC0000
+RX27/TX59       0x11BC0000
+RX28/TX60       0x11CC0000
+RX29/TX61       0x11DC0000
+RX30/TX62       0x11EC0000
+
+Therefore, messages transmitted from the TX device of one board will be received by the
+RX device of the second board with the matching MID.
+
+4. Run a client application to read CAN messages on the first receive mailbox of
+Ringo mx6x board #1
+
+# cat /dev/can0/rx0 &
+
+5. Transmit a CAN message from Ringo mx6x board #2 with a matching MID
+
+# echo testing > /dev/can0/tx32
+
+6. The client aplication on Ringo mx6x board #1 should recieve the message
+
+testing
+
+7. To run a stress test on the CAN bus, continually tranmsit messages from Ringo mx6x
+board #2
+
+# while true
+> do
+> echo testing > /dev/can0/tx32
+> done
+
+8. The client application on Ringomx6x board #1 should recieve the messages
+
+testing
+testing
+testing
+testing
+testing
+testing
+.
+.
+.
+testing
+testing
+testing
+testing
+testing
+testing
+testing
+
+<ctrl+c> on Ringomx6x board #2 to stop
+
+9. Transmit and receive on all channels one after the other.
+On one board start all the receivers as
+follows:
+# start=0
+# numChannels=31
+# let end=$start+$numChannels-1
+# while [ start -le ${end} ];
+> do
+> echo Starting rx${start}
+> cat /dev/can0/rx${start} &
+> let start=start+1
+> done
+
+On the second board send a message sequentially on all channels as follows:
+# start=32
+# numChannels=31
+# let end=$start+$numChannels-1
+# while [ start -le ${end} ];
+> do
+> echo Sending message: Mesg_${start}
+> echo Mesg_${start}> /dev/can0/tx${start}
+> let start=start+1
+> done
+Sending message: Mesg_32
+Sending message: Mesg_33
+Sending message: Mesg_34
+.
+.
+.
+Sending message: Mesg_60
+Sending message: Mesg_61
+Sending message: Mesg_62
+
+The receive side should show the following output:
+# Mesg_32
+Mesg_33
+Mesg_34
+.
+.
+.
+Mesg_60
+Mesg_61
+Mesg_62
+
+
+10. All other tests under the General Operation/Loopback Testing should apply.
+
+11. The CAN bus bitrates can be changed with predefined bitrate options
+passed to the driver.  Restart the driver on Ringo mx6x board #1 with a new bitrate
+
+# slay dev-can-mx6x
+# dev-can-mx6x -b250K can0
+# cat /dev/can0/rx0 &
+
+12. Attempt to transmit a message from Ringo mx6x board #2
+
+# echo testing > /dev/can0/tx32
+
+13. Verify no CAN message were received by board #1
+
+14. Restart the driver on Ringomx6x board #2 with a new bitrate
+
+# slay dev-can-mx6x
+# dev-can-mx6x -b250K can0
+
+15. Transmit a message from Ringomx6x board #2
+
+# echo testing > /dev/can0/tx32
+
+16. Verify the CAN message is received by board #1
+
+17. Non-predefined bitrates and also be configured using the "-B" option by
+passing the values calculated according the equations in the Ringo FlexCAN
+documenation.
+
+
+*************************************************
+    Extended Driver Features & canctl utility
+*************************************************
+The canctl utility provides a commandline mechanism to send devctl's to the CAN
+driver to take advandtage of various driver features.
+
+1. Start the CAN driver in selftest mode
+
+# dev-can-mx6x -t can0
+
+2. Get the use message for the canctl utility
+
+# canctl -h
+Utility to send devctl's to a CAN device
+usage: canctl -u#[,rx#][,tx#] [options]
+
+Options:
+-d                print debug info
+-e                print error info
+-f 0x########     set message filter
+-F                get message filter
+-h                print use message
+-m 0x########     set message ID
+-M                get message ID
+-p 0x########     set tx message priority
+-P                get tx message priority
+-r                read extended CAN message
+-t 0x########     set timestamp
+-T                get timestamp
+-u #[,rx#][,tx#]  CAN device to operate on (default /dev/can1/rx0)
+
+3. Send a DEBUG devctl to the driver
+
+# canctl -u0 -d
+
+Debug output is driver define.  In the case of dev-can-mx6x, the driver
+prints all of its register and mailbox values.
+
+CAN REG
+
+******************************************************
+CANMCR = 0x44a1203f       CANCTRL = 0x5539dc02
+CANTIMER = 0xca2d         CANRXGMASK = 0xffffffff
+CANRX14MASK = 0xffffffff  CANRX15MASK = 0xffffffff
+CANECR = 0x00             CANESR = 0x40080
+CANIMASK2 = 0x7fffffff    CANIMASK1 = 0xfffffffe
+CANIFLAG2  = 0x00         CANIFLAG1 = 0x00
+******************************************************
+
+Mailboxes
+RX Mailboxes
+DEV     MBX     MID             MCF             MDH             MDL
+==========================================================================
+rx0     01      0x100C0000      0x04000000      0x00000000      0x00000000
+rx1     02      0x101C0000      0x04000000      0x00000000      0x00000000
+rx2     03      0x102C0000      0x04000000      0x00000000      0x00000000
+rx3     04      0x103C0000      0x04000000      0x00000000      0x00000000
+rx4     05      0x104C0000      0x04000000      0x00000000      0x00000000
+rx5     06      0x105C0000      0x04000000      0x00000000      0x00000000
+rx6     07      0x106C0000      0x04000000      0x00000000      0x00000000
+rx7     08      0x107C0000      0x04000000      0x00000000      0x00000000
+rx8     09      0x108C0000      0x04000000      0x00000000      0x00000000
+rx9     10      0x109C0000      0x04000000      0x00000000      0x00000000
+rx10    11      0x10AC0000      0x04000000      0x00000000      0x00000000
+rx11    12      0x10BC0000      0x04000000      0x00000000      0x00000000
+rx12    13      0x10CC0000      0x04000000      0x00000000      0x00000000
+rx13    14      0x10DC0000      0x04000000      0x00000000      0x00000000
+rx14    15      0x10EC0000      0x04000000      0x00000000      0x00000000
+rx15    16      0x10FC0000      0x04000000      0x00000000      0x00000000
+rx16    17      0x110C0000      0x04000000      0x00000000      0x00000000
+rx17    18      0x111C0000      0x04000000      0x00000000      0x00000000
+rx18    19      0x112C0000      0x04000000      0x00000000      0x00000000
+rx19    20      0x113C0000      0x04000000      0x00000000      0x00000000
+rx20    21      0x114C0000      0x04000000      0x00000000      0x00000000
+rx21    22      0x115C0000      0x04000000      0x00000000      0x00000000
+rx22    23      0x116C0000      0x04000000      0x00000000      0x00000000
+rx23    24      0x117C0000      0x04000000      0x00000000      0x00000000
+rx24    25      0x118C0000      0x04000000      0x00000000      0x00000000
+rx25    26      0x119C0000      0x04000000      0x00000000      0x00000000
+rx26    27      0x11AC0000      0x04000000      0x00000000      0x00000000
+rx27    28      0x11BC0000      0x04000000      0x00000000      0x00000000
+rx28    29      0x11CC0000      0x04000000      0x00000000      0x00000000
+rx29    30      0x11DC0000      0x04000000      0x00000000      0x00000000
+rx30    31      0x11EC0000      0x04000000      0x00000000      0x00000000
+
+TX Mailboxes
+DEV     MBX     MID             MCF             MDH             MDL
+==========================================================================
+tx32    32      0x100C0000      0x08080000      0x00000000      0x00000000
+tx33    33      0x101C0000      0x08080000      0x00000000      0x00000000
+tx34    34      0x102C0000      0x08080000      0x00000000      0x00000000
+tx35    35      0x103C0000      0x08080000      0x00000000      0x00000000
+tx36    36      0x104C0000      0x08080000      0x00000000      0x00000000
+tx37    37      0x105C0000      0x08080000      0x00000000      0x00000000
+tx38    38      0x106C0000      0x08080000      0x00000000      0x00000000
+tx39    39      0x107C0000      0x08080000      0x00000000      0x00000000
+tx40    40      0x108C0000      0x08080000      0x00000000      0x00000000
+tx41    41      0x109C0000      0x08080000      0x00000000      0x00000000
+tx42    42      0x10AC0000      0x08080000      0x00000000      0x00000000
+tx43    43      0x10BC0000      0x08080000      0x00000000      0x00000000
+tx44    44      0x10CC0000      0x08080000      0x00000000      0x00000000
+tx45    45      0x10DC0000      0x08080000      0x00000000      0x00000000
+tx46    46      0x10EC0000      0x08080000      0x00000000      0x00000000
+tx47    47      0x10FC0000      0x08080000      0x00000000      0x00000000
+tx48    48      0x110C0000      0x08080000      0x00000000      0x00000000
+tx49    49      0x111C0000      0x08080000      0x00000000      0x00000000
+tx50    50      0x112C0000      0x08080000      0x00000000      0x00000000
+tx51    51      0x113C0000      0x08080000      0x00000000      0x00000000
+tx52    52      0x114C0000      0x08080000      0x00000000      0x00000000
+tx53    53      0x115C0000      0x08080000      0x00000000      0x00000000
+tx54    54      0x116C0000      0x08080000      0x00000000      0x00000000
+tx55    55      0x117C0000      0x08080000      0x00000000      0x00000000
+tx56    56      0x118C0000      0x08080000      0x00000000      0x00000000
+tx57    57      0x119C0000      0x08080000      0x00000000      0x00000000
+tx58    58      0x11AC0000      0x08080000      0x00000000      0x00000000
+tx59    59      0x11BC0000      0x08080000      0x00000000      0x00000000
+tx60    60      0x11CC0000      0x08080000      0x00000000      0x00000000
+tx61    61      0x11DC0000      0x08080000      0x00000000      0x00000000
+tx62    62      0x11EC0000      0x08080000      0x00000000      0x00000000
+
+Reserved Mailboxes
+DEV     MBX     MID             MCF             MDH             MDL
+==========================================================================
+-1      00      0x00000000      0x08000000      0x00000000      0x00000000
+-1      63      0x00000000      0x00000000      0x00000000      0x00000000
+
+Where:
+
+DEV - resource manager device name
+MBX - mailbox number
+MID - mailbox message ID
+MCF - message control field
+MDH - message data high word
+MDL - message data low word
+
+Mailboxes listed under the 'reserved' section are not available/accessible to
+clients. See the notes in the code regarding errata ERR005829.
+
+4. Obtain the message ID (MID) for a given device
+
+# canctl -u0,rx0 -M
+GET_MID = 0x100C0000
+# canctl -u0,rx8 -M
+GET_MID = 0x108C0000
+# canctl -u0,tx33 -M
+GET_MID = 0x101C0000
+
+5. Set a new MID for a TX and a RX device
+
+# canctl -u0,rx9 -m0x11CC0000
+# canctl -u0,tx41 -m0x11CC0000
+
+6. Verify the new MID's
+
+# canctl -u0,rx9 -M
+GET_MID = 0x11CC0000
+# canctl -u0,tx41 -M
+GET_MID = 0x11CC0000
+
+NOTE: "canctl -u0 -d" could also be used for debug purposes
+
+7. Verify TX and RX devices can communicate using the new MID
+
+# echo testing > /dev/can0/tx41
+# cat /dev/can0/rx9
+testing
+<ctrl+c>
+
+8. Restart driver with different starting MID values
+
+# slay dev-can-mx6x
+# dev-can-mx6x -t -i 0x1A0C0000,0x1A0C0000 can0
+
+9. Read non-default MID values
+
+# canctl -u0,rx0 -M
+GET_MID = 0x1A0C0000
+# canctl -u0,rx1 -M
+GET_MID = 0x1A1C0000
+# canctl -u0,tx32 -M
+GET_MID = 0x1A0C0000
+
+NOTE: "canctl -u0 -d" could also be used for debug purposes
+
+10. Verify TX/RX still work with new MID's
+
+# echo testing > /dev/can0/tx32
+# cat /dev/can0/rx0
+testing
+<ctrl+c>
+
+
+*************************************************
+    Extended MID's
+*************************************************
+Standard 11 bit MID's - bits 18-28 define the MID
+Extended 28 bit MID's - bits  0-28 define the MID
+First, verify that extended MID's are disabled in the default configuration.
+Then, restart the driver with extended MID's and verify operation.
+
+1. Start the CAN driver with its default MID's
+# dev-can-mx6x -t can0
+
+2. Set invalid extended MID's for two RX devices and one TX device
+
+# canctl -u0,rx3 -m0x100C0002
+# canctl -u0,rx1 -m0x100C0001
+# canctl -u0,tx35 -m0x100C0002
+
+3. Transmit a CAN message from the TX device with the invalid extended MID
+
+# echo testing > /dev/can0/tx35
+
+4. Determine which device received the CAN message
+
+# cat /dev/can0/rx3
+<ctrl+c>
+
+# cat /dev/can0/rx1
+<ctrl+c>
+
+# cat /dev/can0/rx0
+testing
+<ctrl+c>
+
+RX0 received the CAN message even though its MID does not match that of TX35.
+Because the extended MID's are ignored, the device hardware treats RX3, RX1 and RX0
+as having the the same MID (the lower 18 bits are ignored) and the message is
+filtered to the first macthing message buffer. If the first message buffer with a
+matching ID is not free to receive the new frame, then the matching
+algorithm keeps looking for another free message buffer until it finds one.
+
+5. Restart the device with the extended MID option
+
+# slay dev-can-mx6x
+# dev-can-mx6x -t -x can0
+
+6. Set valid extended MID's for two RX devices and one TX device
+
+# canctl -u0,rx1 -m0x100C0002
+# canctl -u0,rx0 -m0x100C0001
+# canctl -u0,tx35 -m0x100C0002
+
+7. Transmit a CAN message from the TX device with the valid extended MID
+
+# echo testing > /dev/can0/tx35
+
+8. Determine which device received the CAN message
+
+# cat /dev/can0/rx0
+<ctrl+c>
+
+# cat /dev/can0/rx1
+testing
+<ctrl+c>
+
+RX1 received the CAN message because extended MID's are enabled and its MID
+exactly matches the MID of TX35.
+
+*************************************************
+    Extended CAN Message Data (Read)
+*************************************************
+In addition to the CAN message data payload, additional information can be
+provided with each received CAN message.  This feature must be enabled on
+driver startup.  In addition, the extended information is only available
+through a devctl.
+
+1. Start the driver in loopback mode (-t)
+
+# dev-can-mx6x -t can0
+
+2. Transmit two CAN messages
+
+# echo tstdat1 > /dev/can0/tx32
+# echo tstdat2 > /dev/can0/tx32
+
+3. Read the CAN messages with extended information
+
+# canctl -u0,rx0 -r
+READ_CANMSG_EXT:
+mid = 0x100C0000
+timestamp = 0xF6A3
+dat len = 8
+dat = 74 73 74 64 61 74 31 0a   tstdat1.
+
+# canctl -u0,rx0 -r
+READ_CANMSG_EXT:
+mid = 0x100C0000
+timestamp = 0x338F
+dat len = 8
+dat = 74 73 74 64 61 74 32 0a   tstdat2.
+
+NOTE: Unlike the "cat" utility, "canctl" only reads 1 messages and then exits.
+
+4. Run the canctl utility to block until another CAN message is received
+
+# canctl -u0,rx0 -r &
+
+5. Transmit another CAN message
+
+# echo tstdat3 > /dev/can0/tx32
+
+The canctl utility unblocks and prints out the data.
+
+# READ_CANMSG_EXT:
+mid = 0x100C0000
+timestamp = 0xD2A1
+dat len = 8
+dat = 74 73 74 64 61 74 33 0a   tstdat3.
+
+6. Verify that normal reads work as normal
+
+# cat /dev/can0/rx0 &
+
+# echo testing > /dev/can0/tx32
+testing
+
+# echo testing > /dev/can0/tx32
+testing
+
+NOTE: When CAN messages are consumed via a normal read, the extended
+      information is discarded.
+
+*************************************************
+    Extended CAN Message Data (Write)
+*************************************************
+Through a single devctl an application may send message ID, data, and datalen.
+This is useful for allowing an application to send using IDs that it does not
+have to dedicate a mailbox.
+
+NOTE: When using this feature the mailbox ID (MID) of the mailbox that is used
+      to transmit is overwritten. It is not recommended to mix normal writes
+      with extended writes on the same mailbox.
+
+1. Start CAN driver with loopback enabled (-t)
+
+# dev-can-mx6x -t can0
+
+2. Check message ID of tx32
+
+# canctl -u0,rx0 -M
+GET_MID = 0x100C0000
+
+3. Send/receive CAN message to RX0
+
+# Check ID of RX0
+# canctl -u0,rx0 -M
+GET_MID = 0x100C0000
+
+# Send message to RX0
+# canctl -u 0,tx32 -w 0x100C0000,0,dog
+mid = 0x100C0000
+dat = dog
+dat len = 4
+mid type = standard
+WRITE_CANMSG_EXT: OK
+
+# Read message sent to rx0
+# canctl -u 0,rx0 -r
+READ_CANMSG_EXT:
+mid = 0x100C0000
+timestamp = 0x3F45
+dat len = 4
+dat = 64 6f 67 00       dog.
+
+4. Send/receive CAN message to RX1
+
+# Check ID of RX1
+# canctl -u0,rx1 -M
+GET_MID = 0x101C0000
+
+# canctl -u 0,tx32 -w 0x101C0000,0,cat
+mid = 0x101C0000
+dat = cat
+dat len = 4
+mid type = standard
+WRITE_CANMSG_EXT: OK
+
+# canctl -u 0,rx1 -r
+READ_CANMSG_EXT:
+mid = 0x101C0000
+timestamp = 0x67C6
+dat len = 4
+dat = 63 61 74 00       cat.
+
+5. After using extended CAN message data write devctl the mailbox ID is changed
+   to the last used value
+
+# echo tstdat1 > /dev/can0/tx32
+# cat /dev/can0/rx1
+tstdat1
+
+# canctl -u0,tx32 -M
+GET_MID = 0x101C0000
+
+*************************************************
+    CAN Message Timestamps
+*************************************************
+The current CAN device timestamp value can be read and set by devctls. In
+addition, the intitial timestamp value can be set on driver init.
+
+1. Start the CAN driver with an initial timestamp (and extended message info)
+
+# dev-can-mx6x -t -m0x1234 -M can0
+
+2. Get the current timestamp
+
+# canctl -u0 -T
+GET_TIMESTAMP = 0x24A7
+# canctl -u0 -T
+GET_TIMESTAMP = 0x3F7C
+# canctl -u0 -T
+GET_TIMESTAMP = 0x549F
+
+3. Set a new timestamp
+
+# canctl -u0 -t0x2222
+
+# canctl -u0 -T
+GET_TIMESTAMP = 0x23CD
+
+4. Transmit a CAN message and read the received message with extended information
+
+# echo testing > /dev/can0/tx32
+
+# canctl -u0,rx0 -r
+READ_CANMSG_EXT:
+mid = 0x100C0000
+timestamp = 0x4B32
+dat len = 8
+dat = 74 65 73 74 69 6e 67 0a   testing.
+
+NOTE: The message's timestamp is relative to the value set via the devctl.
+
+*************************************************
+    CAN Transmit Message Priorities
+*************************************************
+Priorities can be associated with CAN transmit messages.  The hardware uses these
+priorities to determine which CAN message to transmit first if there are multiple
+messages waiting to be transmitted.  The default priorities of all devices is 0 and
+can be modified by devctls.
+
+1. Start the CAN driver
+
+# dev-can-mx6x -t can0
+
+2. Read the current priorities
+
+# canctl -u0,tx32 -P
+GET_PRIO = 0
+
+# canctl -u0,tx33 -P
+GET_PRIO = 0
+
+# canctl -u0,rx1 -P
+devctl CAN_DEVCTL_GET_PRIO: Invalid argument
+
+NOTE: There are no priorities associated with RX devices.
+
+3. Set a new device priority
+
+# canctl -u0,tx32 -p5
+
+# canctl -u0,tx32 -P
+GET_PRIO = 5
+
+*************************************************
+    CAN Receive Message Filtering
+*************************************************
+The filtering provided by the message ID's (MID) can be further modified by using
+a Local Acceptance Mask (LAM).  See the Ringo FlexCAN and CAN Specification documentation.
+The LAM mask specificies which bits in the MID are to be ignored.  By default, the LAM is
+enabled, but it can be modified by use of a devctl.
+
+1. Start the driver with extended MID's enabled
+
+# dev-can-mx6x -t -x can0
+
+2. Get initial LAM filter values
+
+# canctl -u0,rx0 -F
+MFILTER = 0xFFFFFFFF
+
+# canctl -u0,rx1 -F
+MFILTER = 0xFFFFFFFF
+
+# canctl -u0,tx35 -F
+devctl CAN_DEVCTL_GET_MFILTER: Invalid argument
+
+NOTE: LAM filter is invalid for TX devices
+
+3. Get initial MID values
+
+# canctl -u0,rx0 -M
+GET_MID = 0x100C0000
+
+# canctl -u0,rx1 -M
+GET_MID = 0x101C0000
+
+# canctl -u0,tx35 -M
+GET_MID = 0x103C0000
+
+4. Set new MID values for rx0, rx1 and tx35
+
+# canctl -u0,rx0 -m0x100C0001
+# canctl -u0,rx1 -m0x100C0002
+# canctl -u0,tx35 -m0x100C0002
+
+# canctl -u0,rx0 -M
+GET_MID = 0x100C0001
+
+# canctl -u0,rx1 -M
+GET_MID = 0x100C0002
+
+# canctl -u0,tx35 -M
+GET_MID = 0x100C0002
+
+5. Transmit a CAN message from tx35
+
+# echo testing > /dev/can0/tx35
+
+6. Determine which RX device received that message
+
+# cat /dev/can0/rx0
+<ctrl+c>
+
+# cat /dev/can0/rx1
+testing
+<ctrl+c>
+
+RX1 received the message because its MID exactly matched the MID of TX35
+
+7. Set the LAM filter on RX0 and RX1
+
+# canctl -u0,rx0 -f0xFFFFFFF0
+# canctl -u0,rx1 -f0xFFFFFFF0
+
+8. Transmit a CAN message from tx35
+
+echo testing > /dev/can0/tx35
+
+9. Determine which RX device received that message
+
+# cat /dev/can0/rx1
+<ctrl+c>
+
+# cat /dev/can0/rx0
+testing
+
+RX0 and RX1 now appear to have the same MID since the last nibble is now
+ignored for both devices because they have the last nibble of the LAM filter cleared.
+Therefore, RX0 received the message because it is the first message buffer with
+the most matching MID bits.
+
+
+*************************************************
+    CAN Device Errors
+*************************************************
+An error devctl can be sent to a CAN device to obtain driver specific error information
+(each driver will return error data that must be interpretted specifically for that
+device).  In the case of dev-can-mx6x, the error devctl returns the current status
+of the CAN Error Status register (CANES) and a cummulative tally of the CAN Global
+Interrupt Flag register (CANGIF).
+
+1. Start the driver on CAN1 interface with no loopback in order that bus errors can be generated
+
+# dev-can-mx6x can0
+
+2. Send the error devctl to read the error status
+
+# canctl -u0 -e
+ERROR drvr1 = 0x40080
+ERROR drvr2 = 0x0
+ERROR drvr3 = 0x0
+ERROR drvr4 = 0x0
+
+drvr1: FLEXCANx_ESR1 register
+drvr2: CANES devctl(flag) info
+drvr3: FLEXCANx_ECR msb
+drvr4: FLEXCANx_ECR lsb
+
+3. Generate CAN bus errors by attempting to transmit a message on a incompelete bus
+
+# echo testing > /dev/can0/tx32
+
+4. Read the errors
+
+# canctl -u0 -e
+ERROR drvr1 = 0x40250
+ERROR drvr2 = 0x22002
+ERROR drvr3 = 0x0
+ERROR drvr4 = 0x80
+
+NOTE: Refer to the Ringo FlexCAN documentation for interpretation of the CANES and
+CANES flag bit values.
+
+*************************************************
+    Raw Mode
+*************************************************
+
+In Raw mode both receive and transmit use a single mailbox, without filtering of any sort.
+Both regular and extended frame messages are sent and received. If the driver is started in raw mode
+then it is not possible to set the message ID, the message filter, nor the message priority,
+and calls to do so will return an error.
+
+To use raw mode, start the driver with the -R flag:
+
+dev-can-mx6x -R  -b 50K can0
+
+To verify that it's running in raw mode, list the contents of /dev/can0 (Two mailboxes means raw mode):
+
+# ls /dev/can0/
+rx0    tx1
+
+The utility canutil can be used to send raw frames by passing the -f parameter:
+
+canutil -u0  -f
+
+The user will be presented with a menu like this:
+
+Raw Mode Menu
+
+1. Start/stop transmitter performance test (current=disabled)
+2. Transmit n CAN message(s)
+
+a. Set number of messages to send (current=1)
+b. Set size of messages to send (current=8)
+c. Set message type to send (0=std,1=ext,current=1)
+d. Set message ID to send (current=0x123)
+e. Transmitter test inter-frame delay (current=0 us)
+   -------------------------------------------------------
+3. Start/stop receiver performance test (current=disabled)
+4. Receive blocking raw CAN frame
+5. Receive non-blocking raw CAN frame
+   -------------------------------------------------------
+p. Print CAN info and stats
+q. Quit
+
+|| Rx: OK frames=0, error frames=0 || Tx: OK frames=0, error frames=0 ||
+
+Command:
+
+Received messages can be read the same way as in regular mode:
+
+cat /dev/can0/rx0

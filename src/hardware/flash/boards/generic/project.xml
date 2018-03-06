@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<module name="devf-generic">
+  <classification>Driver</classification>
+  <description>
+    <short>Generic flash filesystem support</short>
+    <abstract><![CDATA[
+			The devf-generic manager provides Flash filesystem support for a large number of boards which are extremely compliant with the various methods defined in each of the major NOR flash manufacturers' specifications.
+		]]></abstract>
+  </description>
+  <supports>
+    <availability>
+      <os name="nto">
+        <cpu isa="ppc">
+          <byteOrder>be</byteOrder>
+          <byteOrder>be.spe</byteOrder>
+        </cpu>
+        <cpu isa="sh">
+          <byteOrder>le</byteOrder>
+        </cpu>
+        <cpu isa="arm">
+          <byteOrder>le</byteOrder>
+          <byteOrder>le.v7</byteOrder>
+        </cpu>
+        <cpu isa="x86"/>
+        <cpu isa="mips">
+          <byteOrder>le</byteOrder>
+          <byteOrder>be</byteOrder>
+        </cpu>
+      </os>
+    </availability>
+    <availability supported="false">
+      <cpu isa="arm">
+        <byteOrder>be</byteOrder>
+      </cpu>
+    </availability>
+  </supports>
+  <contents>
+    <component id="generic" generated="true">
+      <location basedir="ppc/be">devf-generic</location>
+      <location basedir="ppc/be.spe">devf-generic</location>
+      <location basedir="sh/le">devf-generic</location>
+      <location basedir="arm/le">devf-generic</location>
+      <location basedir="arm/le.v7">devf-generic</location>
+      <location basedir="x86/o">devf-generic</location>
+      <location basedir="mips/le">devf-generic</location>
+      <location basedir="mips/be">devf-generic</location>
+    </component>
+  </contents>
+  <requires>
+    <part build="true" location="lib/drvr"/>
+    <part rootMacro="MTDFLASH_ROOT" build="true" location="hardware/flash/mtd-flash"/>
+  </requires>
+</module>

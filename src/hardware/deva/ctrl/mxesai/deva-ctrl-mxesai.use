@@ -1,0 +1,98 @@
+%C - ESAI Sound driver for Freescale i.MX SOC family
+
+This is a DLL of the io-audio system.
+
+command:
+
+   io-audio [-d mxesai-[variant] [driver_options]] [-o opt[, opt[, opt]]] [v[v]...]]
+
+driver_options:
+
+esaibase      = #            base address of esai controller (optional)
+tevt          = #            esai TX DMA event number
+tchn          = #            esai TX DMA channel type
+revt          = #            esai RX DMA event number
+rchn          = #            esai RX DMA channel type
+rate          = min[:max]    esai audio sample rate
+main_clk_src  = #            master clock source
+                                (0 = XTAL (from SOC), 1 = FSYS (from SOC) 2 = External Oscillator)
+main_clk_freq = #            frequency of clock source feeding ESAI module
+tx_voices     = #[:#...]     number of playback voices
+rx_voices     = #[:#...]     number of capture voices
+                                if a ':' separated list of voices is provided, the hardware stream
+                                will split into multiple pseudo devices
+i2c_bus       = #            I2C device number for codec control
+i2c_addr      = #            codec I2C slave address
+mixer         = [info:[mixer option1]:[mixer options2][:[other options]]]
+                                mixer=info to display the details of mixer options
+sdo_pin_map   = #[:#..]      lists the output pin numbers
+sdi_pin_map   = #[:#..]      lists the input pin numbers
+sdo_chmap     = #[:#..]      Serial data output pin channel map
+sdi_chmap     = #[:#..]      Serial data input pin channel map
+clk_mode      = [master|slave] Clock master or slave.
+nslots        = #            Number of slots in the TDM frame.
+debug                        PCM logging to /dev/shmem.
+tx_frag_size  = #            DMA fragment/block size. Only used if pseudo devices enabled
+rx_frag_size  = #            DMA fragment/block size. Only used if pseudo devices enabled
+protocol      = [i2s|pcm]    Format of audio frame.
+                                i2s = Active low FS, Transmit on falling edge,
+                                      Receive on rising edge, 1-bit data delay.
+                                pcm = Active high FS, Transmit on rising edge,
+                                      Receive on rising edge, 0-bit data delay.
+bit_delay     = [0|1]        Data bit delay.
+xclk_pol      = [0|1]        Transmit bit clock polarity.
+rclk_pol      = [0|1]        Receive bit clock polarity.
+fsync_pol     = [0|1]        Frame sync polarity.
+slot_size     = [16|32]      TDM slot size.
+fs_active_width = [bit|word] Configure the Frame sync pulse width.
+
+Note: The protocol option can be used in place of the bit_delay, xclk_pol, rclk_pol and fsync_pol options.
+
+Note: When multiple sdx_pins are enabled the data is interleaved over the pins by the MXESAI controller.
+      If playing stereo pairs, this has the effect of spitting the pairs over the pins (see below diagram).
+      Use the sdx_chmap option to specify the preferred channel/sample position in memory so that after
+      interleaving by hardware samples appear on the line as desired.
+
+      Example: 2 SDO pins (sdo_pin_map="1:2") x 4 slot/channel TDM audio frame = 8 channels/slots total
+               Sample pair1 = 0,1 pair2 = 2,3 pair3 = 4,5 pair5 = 6,7
+
+               sdx_chmap = 0:1:2:3:4:5:6:7	<-- "normal" sample/channel layout in memory
+
+                        -----------------------
+               pin 1 - |  0  |  2  |  4  |  6  |
+                        -----------------------
+                        -----------------------
+               pin 2 - |  1  |  3  |  5  |  7  |
+                        -----------------------
+
+               sdx_chmap = 0:4:1:5:2:6:3:7  <-- Updated channel map to group channels together on each pin
+
+                        -----------------------
+               pin 1 - |  0  |  1  |  2  |  3  |
+                        -----------------------
+                        -----------------------
+               pin 2 - |  4  |  5  |  6  |  7  |
+                        -----------------------
+
+      By default the driver will generate a channel map to re-order the samples to group channels
+      together on a pin like shown in the above example. Use the sdx_chmap command line option for
+      custom channel layouts.
+
+example:
+io-audio -d mxesai-mx53sabre-ai esaibase=0x50018000,tevt=41,tchn=3,revt=40,rchn=4,rate=48000,i2c_bus=1,i2c_addr=0x48
+
+playback:
+   AOUT1 - Front Left
+   AOUT2 - Front Right
+   AOUT3 - Center
+   AOUT4 - Low Frequency
+   AOUT5 - Rear Left
+   AOUT6 - Rear Right
+   AOUT7 - Surround Left
+   AOUT8 - Surround Right
+
+capture:
+   AIN1  - Line In Left
+   AIN2  - Line In Right
+   AIN3  - Mic In Left
+   AIN4  - Mic In Right

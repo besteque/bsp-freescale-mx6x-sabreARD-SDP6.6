@@ -1,0 +1,2 @@
+LIST=MDRIVER_UTILS_BOARD_IMX6X
+include recurse.mk

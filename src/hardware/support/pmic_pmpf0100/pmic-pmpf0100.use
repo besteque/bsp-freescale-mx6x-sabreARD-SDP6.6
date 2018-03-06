@@ -1,0 +1,14 @@
+%C iMX6X QSB PMIC Device driver
+
+%C [options]
+
+Options:
+-b bus_number   I2C Bus Number for PMIC connection
+                 Default = 3  (/dev/i2c3)
+-a address      PMIC address on I2C bus
+                 Default = 0x8
+-i irq_num      ARM IRQ number
+                 Default = 256 (for GPIO4[16])
+-v level        Logging verbosity level
+                 Default = 0 (errors only)
+

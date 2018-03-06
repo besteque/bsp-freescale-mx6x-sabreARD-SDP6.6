@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<module name="minidriver-data">
+  <classification>Driver</classification>
+  <description>
+    <short>Mini Driver Data Utility</short>
+    <abstract><![CDATA[
+	                The Mini Driver Data Utility.
+	        ]]></abstract>
+  </description>
+  <supports>
+    <availability>
+      <os name="nto">
+        <cpu isa="ppc">
+          <byteOrder>be</byteOrder>
+          <byteOrder>be.spe</byteOrder>
+        </cpu>
+        <cpu isa="sh">
+          <byteOrder>le</byteOrder>
+        </cpu>
+        <cpu isa="arm">
+          <byteOrder>le</byteOrder>
+          <byteOrder>le.v7</byteOrder>
+        </cpu>
+        <cpu isa="x86"/>
+        <cpu isa="mips">
+          <byteOrder>le</byteOrder>
+          <byteOrder>be</byteOrder>
+        </cpu>
+      </os>
+    </availability>
+  </supports>
+  <contents>
+    <component id="data" generated="true">
+      <location basedir="ppc/o-be">mdrvr-data</location>
+      <location basedir="ppc/o-be.spe">mdrvr-data</location>
+      <location basedir="sh/o-le">mdrvr-data</location>
+      <location basedir="arm/o-le">mdrvr-data</location>
+      <location basedir="arm/o-le.v7">mdrvr-data</location>
+      <location basedir="x86/o">mdrvr-data</location>
+      <location basedir="mips/o-le">mdrvr-data</location>
+      <location basedir="mips/o-be">mdrvr-data</location>
+    </component>
+  </contents>
+</module>

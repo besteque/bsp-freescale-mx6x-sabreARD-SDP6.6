@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<module name="pmpf0100">
+	<type>Element</type>
+	<classification>Driver</classification>
+
+	<description>
+            <short>PMPF0100 PMIC Driver</short>
+	        <abstract>
+	                <![CDATA[This interface is supported in the Rockwell-Collins i.MX6 BSP.]]>
+	        </abstract>
+	</description>
+
+	<supports>
+		<availability>
+			<cpu isa="arm">
+			<byteOrder>le</byteOrder>
+			</cpu>
+		</availability>
+	</supports>
+
+	<source available="false">
+		<location type="">.</location>
+	</source>
+	<GroupOwner>hw</GroupOwner>
+
+	<contents>
+		<component id="pmpf0100" generated="true">
+			<location basedir="{cpu}/{endian}"
+				 runtime="true">pmic-pmpf0100</location>
+		</component>
+	</contents>
+
+	<requires>
+		<part build="false" location="sbin"/>
+	</requires>
+
+</module>

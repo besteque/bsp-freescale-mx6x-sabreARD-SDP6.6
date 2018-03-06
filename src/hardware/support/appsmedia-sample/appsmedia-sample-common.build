@@ -1,0 +1,1315 @@
+##**************************************************************************
+##			APPSMEDIA-SAMPLE Startup Scripts
+##**************************************************************************
+
+[perms=0644] .start-appsmedia-sample = {
+	#set env variables
+	. /scripts/env.sh
+
+	###########################################################################
+	## RAM disk
+	###########################################################################
+	echo Creating ram disk...
+	#By default devb-ram creates an old qnx4 filesystem that only support filenames no more than 48 characters long
+	#we need to manually format it to create a new qnx6 filesystem that the maximum filenames is increased to 510 characters
+	devb-ram ram capacity=231072 nodinit disk name=ramdisk blk cache=512k qnx6 sync=optional
+	waitfor /dev/ramdisk0t77 10
+	mkqnx6fs -q /dev/ramdisk0t77
+	mount -tqnx6 /dev/ramdisk0t77 /
+
+	echo Ram disk Created.
+
+	#mount the dos partition from SD card to /base.
+	#uncomment the mount command if you need a persistent filesystem.
+	#make sure your dos partition is located in /dev/hd0t12.
+
+	#mount -tdos -o exe=all /dev/hd0t12 /base 
+
+	#create the diretories, so they are writable
+	mkdir -p /bin /sbin /lib/dll/mmedia /etc/ssh /etc/mm /usr/lib/graphics /usr/bin /usr/sbin
+	mkdir -p  /var/tmp /var/pps
+
+	echo Starting dumper
+	dumper -S -F -d /var/dumper/
+
+	echo Starting PPS
+	pps -v -l0 -C -t 300000
+	waitfor /pps
+
+	mkdir -p /pps/qnx?nopersist
+	mkdir -p /pps/qnx/qdb?nopersist
+	echo Starting QDB
+	qdb -vv -o verchk=minor
+	###########################################################################
+	## Network
+	###########################################################################
+	#create the diretories, so they are writable
+	mkdir -p /var/db/ /var/log/net_pps/ /var/run/ /var/etc/system/config/ /pps/services?nopersist /root
+
+
+	#set current date
+	/scripts/setdate.sh &
+
+	###########################################################################
+	## Muti-media & usblauncher
+	###########################################################################
+	/proc/boot/ksh /proc/boot/.start-mmedia
+	usblauncher -p 2 -t -s /lib/dll/pubs/
+
+	###########################################################################
+	## Browser
+	###########################################################################
+	#create the diretories, so they are writable
+	mkdir -p /pps/services/certmgr?nopersist /var/certmgr/common/user_trusted /var/keymgr/ /var/clipboard/
+	mkdir -p /pps/services/launcher?nopersist /accounts/1000/appdata/
+	mkdir -p /pps/services/private?nopersist /pps/services/confstr?nopersist
+	mkdir -p /pps/services/geolocation?nopersist
+	mkdir -p /pps/system/installer/coreos?nopersist /pps/system/installer/registeredapps?nopersist
+	mkdir -p /var/dumper /var/fontconfig /etc/id
+	mkdir -p /accounts/1000/config /accounts/1000/sharewith /accounts/1000/shared/downloads
+
+	#certmgr
+	certmgr_pps &
+	waitfor /pps/services/certmgr/control?nopersist
+
+	authman -i -U 505
+	cp /proc/boot/launcher /sbin/
+	waitfor /sbin/launcher
+
+	/sbin/launcher -i -U 89:0,1000,1004,1100,1104,1200,1204 -m 970 -t 4 -v -b &
+
+	#geolocation services
+	ip-provider -E1 > /dev/slog2/debug 2>&1  & 
+
+	#Bar-install the browser app
+	echo "INFO: Installing browser app"
+	/proc/boot/ksh -c "/scripts/bar-install /appinstall/sys.browser.bar 2>&1 > /dev/slog2/debug"
+	/base/bin/webkit-launcher &
+
+	echo "Run the following to launch the browser:"
+	echo launch sys.browser
+
+}
+
+
+##**************************************************************************
+##			  Scripts and config files
+##**************************************************************************
+
+###########################################################################
+## shadow
+###########################################################################
+[perms=0644] /etc/shadow = {
+root:E4m.vvfkKBbRo:1231323780:0:0
+}
+
+###########################################################################
+## passwd
+###########################################################################
+
+###########################################################################
+## sshd_config
+###########################################################################
+[perms=0755] /etc/ssh/sshd_config = {
+
+# Disable legacy (protocol version 1) support in the server for new
+# installations. In future the default will change to require explicit
+# activation of protocol 1
+Protocol 2
+
+HostKey /var/etc/ssh/ssh_host_rsa_key
+
+# Authentication:
+
+LoginGraceTime 600
+PermitRootLogin yes
+
+PermitUserEnvironment yes
+UseDNS no
+
+# override default of no subsystems
+Subsystem	sftp	/usr/libexec/sftp-server
+}
+
+###########################################################################
+## ssh-start.sh
+###########################################################################
+[perms=0755] /scripts/ssh-start.sh = {
+#!/bin/sh
+
+#This script is intended to run once/boot only, at startup
+running=/dev/shmem/ssh-start.run
+if [ -e $running ]; then
+    echo "$0 Error: SSH script was already run.  Remove $running to re-run this script"
+    exit 1;
+fi
+
+#Set the umask before creating the SSH files
+oldmask=$(umask)
+umask 022
+
+#Create the SSH keys
+ssh_etcdir="/etc/ssh"
+mkdir -p "/var/etc/ssh"
+filename="ssh_host_rsa_key"
+etclink="/etc/ssh/ssh_host_rsa_key"
+varkey="/var/etc/ssh/ssh_host_rsa_key"
+
+if [ ! -f "$etclink" ]; then
+    echo "$0 INFO: generating SSH key"
+    ssh-keygen -t "rsa" -N '' -f "$varkey" 
+fi
+
+
+#Restore the umask
+umask "$oldmask"
+
+#Create the chroot environment
+mkdir -p "/var/chroot/sshd/."
+chmod 0755 "/var/chroot/sshd"
+
+#Launch sshd
+echo "$0 INFO: starting sshd"
+/proc/boot/sshd
+
+touch $running
+unset running
+}
+
+###########################################################################
+## .profile
+###########################################################################
+/root/.profile = {
+export PATH=/proc/boot:/sbin:/bin:/usr/sbin:/usr/bin:/opt/bin
+export LD_LIBRARY_PATH=/proc/boot:/lib:/usr/lib:/lib/dll:/opt/lib
+}
+
+###########################################################################
+## environment
+###########################################################################
+[perms=0644]/root/.ssh/environment = {
+_=/bin/env
+SHELL=/bin/sh
+USER=root
+MAIL=/var/spool/mail/root
+HOME=/root
+LOGNAME=root
+PATH=/proc/boot:/sbin:/bin:/usr/sbin:/usr/bin:/opt/bin
+LD_LIBRARY_PATH=/proc/boot:/lib:/usr/lib:/lib/dll:/opt/lib
+ENV=/scripts/env.sh
+}
+
+###########################################################################
+## launch
+###########################################################################
+[perms=0755]/sbin/launch = {
+#!/bin/sh
+
+if [ "$#" -ne 1 ] || [ "$1" = "" ]
+then
+	echo "Usage: $0 APP"
+	exit 2
+fi
+
+APP=$(ls -1 /apps/ | grep $1)
+
+MATCH=$(ls -1 /apps/ | grep -c $1)
+
+if [ "$\{APP\}" = "" ];then
+	echo "No such app $1" >&2
+	exit 1
+fi
+
+if [ $MATCH -gt 1 ];then
+	echo "More than one match: $1" >&2
+	exit 1
+fi
+
+echo "msg::start\\ndat::$\{APP?\},ORIENTATION=0\\nid::$\{APP?\}" > /pps/services/launcher/control
+
+}
+
+###########################################################################
+## stop-apps
+###########################################################################
+[perms=0755]/sbin/stop-apps = {
+#!/bin/sh
+
+echo Stopping all running apps ...
+echo "msg::stop\\ndat::" > /pps/services/launcher/control
+}
+
+###########################################################################
+## group
+###########################################################################
+
+##**************************************************************************
+##			   Binaries and drivers
+##**************************************************************************
+
+###########################################################################
+## C++ libs required for Browser
+###########################################################################
+
+
+
+###########################################################################
+## USB driver libraries
+###########################################################################
+#devh-usb.so
+
+###########################################################################
+## NETWORK binaries & files
+###########################################################################
+
+
+###########################################################################
+## PPS
+###########################################################################
+
+
+###########################################################################
+## REMOTE_DEBUG
+###########################################################################
+
+
+###########################################################################
+## Filesystems support
+###########################################################################
+/sbin/chkdosfs=chkdosfs
+/sbin/chkqnx6fs=chkqnx6fs
+/sbin/chkfsys=chkfsys
+/usr/bin/fsysinfo=fsysinfo
+
+###########################################################################
+## RAM disk
+###########################################################################
+devb-ram
+dinit
+
+###########################################################################
+## qdb
+###########################################################################
+/usr/bin/qdb=qdb
+
+###########################################################################
+## Multimedia Publishing
+###########################################################################
+/bin/usblauncher=usblauncher
+
+[search=${QNX_TARGET}/etc/usblauncher]
+/etc/usblauncher/rules.lua=rules.lua
+
+[search=${QNX_TARGET}/armle-v7/lib/dll/pubs]
+/lib/dll/pubs/pp-audiocd.so=pp-audiocd.so
+/lib/dll/pubs/pp-generic.so=pp-generic.so
+/lib/dll/pubs/pp-mediafs.so=pp-mediafs.so
+/lib/dll/pubs/pp-dvd.so=pp-dvd.so
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+[perms=0644] /etc/mcd.mnt = {
+#---------------------------------------------------------------------------
+# Device                            Mountpt         Type            Options
+#---------------------------------------------------------------------------
+#/dev/cd[0-9]                        /fs/cd%#        udf             normv
+/dev/umass[0-9]                     /                               enum
+/dev/umass[0-9]t1[124]              /fs/usb%0       dos             normv,fsi=use,exe=all,vollabel=ignore
+/dev/umass[0-9]t1[124].[0-9]        /fs/usb%0       dos             normv,fsi=use,exe=all,vollabel=ignore
+/dev/umass[0-9]t[146]               /fs/usb%0       dos             normv,fsi=use,exe=all,vollabel=ignore
+/dev/umass[0-9]t[146].[0-9]         /fs/usb%0       dos             normv,fsi=use,exe=all,vollabel=ignore
+/dev/umass[0-9]t7[789]              /fs/usb%0       qnx4            normv
+/dev/umass[0-9]t17[789]             /fs/usb%0       qnx6            normv,sync=optional
+#/dev/umass[0-9]t7                   /fs/usb%0       nt              normv,ro
+#/dev/umass[0-9]t175                 /fs/usb%0       mac             normv,ro
+/dev/umass[0-9]                     /fs/usb%0       dos             normv,fsi=use,exe=all,vollabel=ignore
+
+}
+
+###########################################################################
+## general commands
+###########################################################################
+
+
+###########################################################################
+## Terminal support
+###########################################################################
+[search=${QNX_TARGET}/usr/lib/terminfo]
+/usr/lib/terminfo/a/ansi=a/ansi
+/usr/lib/terminfo/q/qansi=q/qansi
+/usr/lib/terminfo/q/qansi-g=q/qansi-g
+/usr/lib/terminfo/q/qansi-m=q/qansi-m
+/usr/lib/terminfo/q/qansi-t=q/qansi-t
+/usr/lib/terminfo/q/qansi-w=q/qansi-w
+/usr/lib/terminfo/q/qnx=q/qnx
+/usr/lib/terminfo/q/qnx2=q/qnx2
+/usr/lib/terminfo/q/qnx4=q/qnx4
+/usr/lib/terminfo/q/qnxm=q/qnxm
+/usr/lib/terminfo/q/qnxs2=q/qnxs2
+/usr/lib/terminfo/q/qnxt=q/qnxt
+/usr/lib/terminfo/q/qnxt2=q/qnxt2
+/usr/lib/terminfo/q/qnxt4=q/qnxt4
+/usr/lib/terminfo/q/qnxtmono=q/qnxtmono
+/usr/lib/terminfo/q/qnxw=q/qnxw
+/usr/lib/terminfo/q/qvt101=q/qvt101
+/usr/lib/terminfo/q/qvt102=q/qvt102
+/usr/lib/terminfo/q/qvt108=q/qvt108
+/usr/lib/terminfo/t/test=t/test
+/usr/lib/terminfo/terminfo.src=terminfo.src
+/usr/lib/terminfo/v/vi200-f=v/vi200-f
+/usr/lib/terminfo/v/viewpoint=v/viewpoint
+/usr/lib/terminfo/v/visual=v/visual
+/usr/lib/terminfo/v/vs100=v/vs100
+/usr/lib/terminfo/v/vs100s=v/vs100s
+/usr/lib/terminfo/v/vt100=v/vt100
+/usr/lib/terminfo/v/vt100-am=v/vt100-am
+/usr/lib/terminfo/v/vt102=v/vt102
+/usr/lib/terminfo/v/vt102-am=v/vt102-am
+/usr/lib/terminfo/v/vt102-plus=v/vt102-plus
+/usr/lib/terminfo/v/vt52=v/vt52
+/usr/lib/terminfo/x/xterm=x/xterm
+/usr/lib/terminfo/x/xterm-m=x/xterm-m
+/usr/lib/terminfo/x/xterm-q=x/xterm-q
+/usr/lib/terminfo/x/xterms=x/xterms
+#Restore search path
+[search=${MKIFS_PATH}]
+
+###########################################################################
+## uncomment for debugging support
+###########################################################################
+
+
+##**************************************************************************
+##			         Files
+##**************************************************************************
+
+##-------------------------------------------------------------------------
+## 			Browser related 
+##-------------------------------------------------------------------------
+
+#Browser Bar File
+[search=${QNX_TARGET}/appinstall/bars/unsigned/browser/]
+/appinstall/sys.browser.bar=sys.browser.bar
+
+#Restore search path
+[search=${MKIFS_PATH}]
+###########################################################################
+## launcher
+###########################################################################
+/lib/libimfclient.so.1=libimfclient.so.1 
+launcher
+unzip
+ip-provider
+
+[search=${QNX_TARGET}/etc/system/config]
+/etc/system/config/launcher.cfg=launcher.cfg
+[perms=0755]/etc/system/config/launcher_caps=launcher_caps
+
+[search=${QNX_TARGET}/../../qsam/1.1/deployment/target/scripts]
+[perms=0755]/scripts/bar-install=bar-install
+[perms=0755]/scripts/bar-uninstall=bar-uninstall
+
+#Restore search path
+[search=${MKIFS_PATH}]
+###########################################################################
+## Trusted certificates
+###########################################################################
+[search=${QNX_TARGET}/var/certmgr/common/user_trusted/]
+/var/certmgr/common/user_trusted/cert_02FAF3E291435468607857694DF5E45B68851868.pem=cert_02FAF3E291435468607857694DF5E45B68851868.pem
+/var/certmgr/common/user_trusted/cert_039EEDB80BE7A03C6953893B20D2D9323A4C2AFD.pem=cert_039EEDB80BE7A03C6953893B20D2D9323A4C2AFD.pem
+/var/certmgr/common/user_trusted/cert_0483ED3399AC3608058722EDBC5E4600E3BEF9D7.pem=cert_0483ED3399AC3608058722EDBC5E4600E3BEF9D7.pem
+/var/certmgr/common/user_trusted/cert_0563B8630D62D75ABBC8AB1E4BDFB5A899B24D43.pem=cert_0563B8630D62D75ABBC8AB1E4BDFB5A899B24D43.pem
+/var/certmgr/common/user_trusted/cert_0B7199A1C7F3ADDF7BA7EAB8EB574AE80D60DDDE.pem=cert_0B7199A1C7F3ADDF7BA7EAB8EB574AE80D60DDDE.pem
+/var/certmgr/common/user_trusted/cert_0B77BEBBCB7AA24705DECC0FBD6A02FC7ABD9B52.pem=cert_0B77BEBBCB7AA24705DECC0FBD6A02FC7ABD9B52.pem
+/var/certmgr/common/user_trusted/cert_132D0D45534B6997CDB2D5C339E25576609B5CC6.pem=cert_132D0D45534B6997CDB2D5C339E25576609B5CC6.pem
+/var/certmgr/common/user_trusted/cert_1F4914F7D874951DDDAE02C0BEFD3A2D82755185.pem=cert_1F4914F7D874951DDDAE02C0BEFD3A2D82755185.pem
+/var/certmgr/common/user_trusted/cert_204285DCF7EB764195578E136BD4B7D1E98E46A5.pem=cert_204285DCF7EB764195578E136BD4B7D1E98E46A5.pem
+/var/certmgr/common/user_trusted/cert_216B2A29E62A00CE820146D8244141B92511B279.pem=cert_216B2A29E62A00CE820146D8244141B92511B279.pem
+/var/certmgr/common/user_trusted/cert_22D5D8DF8F0231D18DF79DB7CF8A2D64C93F6C3A.pem=cert_22D5D8DF8F0231D18DF79DB7CF8A2D64C93F6C3A.pem
+/var/certmgr/common/user_trusted/cert_23E594945195F2414803B4D564D2A3A3F5D88B8C.pem=cert_23E594945195F2414803B4D564D2A3A3F5D88B8C.pem
+/var/certmgr/common/user_trusted/cert_25019019CFFBD9991CB76825748D945F30939542.pem=cert_25019019CFFBD9991CB76825748D945F30939542.pem
+/var/certmgr/common/user_trusted/cert_2796BAE63F1801E277261BA0D77770028F20EEE4.pem=cert_2796BAE63F1801E277261BA0D77770028F20EEE4.pem
+/var/certmgr/common/user_trusted/cert_293621028B20ED02F566C532D1D6ED909F45002F.pem=cert_293621028B20ED02F566C532D1D6ED909F45002F.pem
+/var/certmgr/common/user_trusted/cert_2F173F7DE99667AFA57AF80AA2D1B12FAC830338.pem=cert_2F173F7DE99667AFA57AF80AA2D1B12FAC830338.pem
+/var/certmgr/common/user_trusted/cert_317A2AD07F2B335EF5A1C34E4B57E8B7D8F1FCA6.pem=cert_317A2AD07F2B335EF5A1C34E4B57E8B7D8F1FCA6.pem
+/var/certmgr/common/user_trusted/cert_31F1FD68226320EEC63B3F9DEA4A3E537C7C3917.pem=cert_31F1FD68226320EEC63B3F9DEA4A3E537C7C3917.pem
+/var/certmgr/common/user_trusted/cert_323C118E1BF7B8B65254E2E2100DD6029037F096.pem=cert_323C118E1BF7B8B65254E2E2100DD6029037F096.pem
+/var/certmgr/common/user_trusted/cert_3679CA35668772304D30A5FB873B0FA77BB70D54.pem=cert_3679CA35668772304D30A5FB873B0FA77BB70D54.pem
+/var/certmgr/common/user_trusted/cert_36B12B49F9819ED74C9EBC380FC6568F5DACB2F7.pem=cert_36B12B49F9819ED74C9EBC380FC6568F5DACB2F7.pem
+/var/certmgr/common/user_trusted/cert_379A197B418545350CA60369F33C2EAF474F2079.pem=cert_379A197B418545350CA60369F33C2EAF474F2079.pem
+/var/certmgr/common/user_trusted/cert_3921C115C15D0ECA5CCB5BC4F07D21D8050B566A.pem=cert_3921C115C15D0ECA5CCB5BC4F07D21D8050B566A.pem
+/var/certmgr/common/user_trusted/cert_3A44735AE581901F248661461E3B9CC45FF53A1B.pem=cert_3A44735AE581901F248661461E3B9CC45FF53A1B.pem
+/var/certmgr/common/user_trusted/cert_3E2BF7F2031B96F38CE6C4D8A85D3E2D58476A0F.pem=cert_3E2BF7F2031B96F38CE6C4D8A85D3E2D58476A0F.pem
+/var/certmgr/common/user_trusted/cert_47BEABC922EAE80E78783462A79F45C254FDE68B.pem=cert_47BEABC922EAE80E78783462A79F45C254FDE68B.pem
+/var/certmgr/common/user_trusted/cert_4EB6D578499B1CCF5F581EAD56BE3D9B6744A5E5.pem=cert_4EB6D578499B1CCF5F581EAD56BE3D9B6744A5E5.pem
+/var/certmgr/common/user_trusted/cert_503006091D97D4F5AE39F7CBE7927D7D652D3431.pem=cert_503006091D97D4F5AE39F7CBE7927D7D652D3431.pem
+/var/certmgr/common/user_trusted/cert_56E0FAC03B8F18235518E5D311CAE8C24331AB66.pem=cert_56E0FAC03B8F18235518E5D311CAE8C24331AB66.pem
+/var/certmgr/common/user_trusted/cert_5D003860F002ED829DEAA41868F788186D62127F.pem=cert_5D003860F002ED829DEAA41868F788186D62127F.pem
+/var/certmgr/common/user_trusted/cert_5F3B8CF2F810B37D78B4CEEC1919C37334B9C774.pem=cert_5F3B8CF2F810B37D78B4CEEC1919C37334B9C774.pem
+/var/certmgr/common/user_trusted/cert_5F43E5B1BFF8788CAC1CC7CA4A9AC6222BCC34C6.pem=cert_5F43E5B1BFF8788CAC1CC7CA4A9AC6222BCC34C6.pem
+/var/certmgr/common/user_trusted/cert_5FB7EE0633E259DBAD0C4C9AE6D38F1A61C7DC25.pem=cert_5FB7EE0633E259DBAD0C4C9AE6D38F1A61C7DC25.pem
+/var/certmgr/common/user_trusted/cert_61EF43D77FCAD46151BC98E0C35912AF9FEB6311.pem=cert_61EF43D77FCAD46151BC98E0C35912AF9FEB6311.pem
+/var/certmgr/common/user_trusted/cert_627F8D7827656399D27D7F9044C9FEB3F33EFA9A.pem=cert_627F8D7827656399D27D7F9044C9FEB3F33EFA9A.pem
+/var/certmgr/common/user_trusted/cert_6631BF9EF74F9EB6C9D5A60CBA6ABED1F7BDEF7B.pem=cert_6631BF9EF74F9EB6C9D5A60CBA6ABED1F7BDEF7B.pem
+/var/certmgr/common/user_trusted/cert_67650DF17E8E7E5B8240A4F4564BCFE23D69C6F0.pem=cert_67650DF17E8E7E5B8240A4F4564BCFE23D69C6F0.pem
+/var/certmgr/common/user_trusted/cert_6782AAE0EDEEE21A5839D3C0CD14680A4F60142A.pem=cert_6782AAE0EDEEE21A5839D3C0CD14680A4F60142A.pem
+/var/certmgr/common/user_trusted/cert_69BD8CF49CD300FB592E1793CA556AF3ECAA35FB.pem=cert_69BD8CF49CD300FB592E1793CA556AF3ECAA35FB.pem
+/var/certmgr/common/user_trusted/cert_74207441729CDD92EC7931D823108DC28192E2BB.pem=cert_74207441729CDD92EC7931D823108DC28192E2BB.pem
+/var/certmgr/common/user_trusted/cert_742C3192E607E424EB4549542BE1BBC53E6174E2.pem=cert_742C3192E607E424EB4549542BE1BBC53E6174E2.pem
+/var/certmgr/common/user_trusted/cert_75E0ABB6138512271C04F85FDDDE38E4B7242EFE.pem=cert_75E0ABB6138512271C04F85FDDDE38E4B7242EFE.pem
+/var/certmgr/common/user_trusted/cert_7E784A101C8265CC2DE1F16D47B440CAD90A1945.pem=cert_7E784A101C8265CC2DE1F16D47B440CAD90A1945.pem
+/var/certmgr/common/user_trusted/cert_85371CA6E550143DCE2803471BDE3A09E8F8770F.pem=cert_85371CA6E550143DCE2803471BDE3A09E8F8770F.pem
+/var/certmgr/common/user_trusted/cert_85B5FF679B0C79961FC86E4422004613DB179284.pem=cert_85B5FF679B0C79961FC86E4422004613DB179284.pem
+/var/certmgr/common/user_trusted/cert_8782C6C304353BCFD29692D2593E7D44D934FF11.pem=cert_8782C6C304353BCFD29692D2593E7D44D934FF11.pem
+/var/certmgr/common/user_trusted/cert_887A79406A2E614FB65FA6255E1411E4E13A760A.pem=cert_887A79406A2E614FB65FA6255E1411E4E13A760A.pem
+/var/certmgr/common/user_trusted/cert_8CF427FD790C3AD166068DE81E57EFBB932272D4.pem=cert_8CF427FD790C3AD166068DE81E57EFBB932272D4.pem
+/var/certmgr/common/user_trusted/cert_8D08FC43C0770CA84F4DCCB2D41A5D956D786DC4.pem=cert_8D08FC43C0770CA84F4DCCB2D41A5D956D786DC4.pem
+/var/certmgr/common/user_trusted/cert_8D1784D537F3037DEC70FE578B519A99E610D7B0.pem=cert_8D1784D537F3037DEC70FE578B519A99E610D7B0.pem
+/var/certmgr/common/user_trusted/cert_91C6D6EE3E8AC86384E548C299295C756C817B81.pem=cert_91C6D6EE3E8AC86384E548C299295C756C817B81.pem
+/var/certmgr/common/user_trusted/cert_925A8F8D2C6D04E0665F596AFF22D863E8256F3F.pem=cert_925A8F8D2C6D04E0665F596AFF22D863E8256F3F.pem
+/var/certmgr/common/user_trusted/cert_97817950D81C9670CC34D809CF794431367EF474.pem=cert_97817950D81C9670CC34D809CF794431367EF474.pem
+/var/certmgr/common/user_trusted/cert_99A69BE61AFE886B4D2B82007CB854FC317E1539.pem=cert_99A69BE61AFE886B4D2B82007CB854FC317E1539.pem
+/var/certmgr/common/user_trusted/cert_9BAAE59F56EE21CB435ABE2593DFA7F040D11DCB.pem=cert_9BAAE59F56EE21CB435ABE2593DFA7F040D11DCB.pem
+/var/certmgr/common/user_trusted/cert_9C615C4D4D85103A5326C24DBAEAE4A2D2D5CC97.pem=cert_9C615C4D4D85103A5326C24DBAEAE4A2D2D5CC97.pem
+/var/certmgr/common/user_trusted/cert_9F744E9F2B4DBAEC0F312C50B6563B8E2D93C311.pem=cert_9F744E9F2B4DBAEC0F312C50B6563B8E2D93C311.pem
+/var/certmgr/common/user_trusted/cert_9FAD91A6CE6AC6C50047C44EC9D4A50D92D84979.pem=cert_9FAD91A6CE6AC6C50047C44EC9D4A50D92D84979.pem
+/var/certmgr/common/user_trusted/cert_A1DB6393916F17E4185509400415C70240B0AE6B.pem=cert_A1DB6393916F17E4185509400415C70240B0AE6B.pem
+/var/certmgr/common/user_trusted/cert_A1E7C600AA4170E5B74BC94F9B9703EDC261B4B9.pem=cert_A1E7C600AA4170E5B74BC94F9B9703EDC261B4B9.pem
+/var/certmgr/common/user_trusted/cert_A3F1333FE242BFCFC5D14E8F394298406810D1A0.pem=cert_A3F1333FE242BFCFC5D14E8F394298406810D1A0.pem
+/var/certmgr/common/user_trusted/cert_A8985D3A65E5E5C4B2D7D66D40C6DD2FB19C5436.pem=cert_A8985D3A65E5E5C4B2D7D66D40C6DD2FB19C5436.pem
+/var/certmgr/common/user_trusted/cert_A9E9780814375888F20519B06D2B0D2B6016907D.pem=cert_A9E9780814375888F20519B06D2B0D2B6016907D.pem
+/var/certmgr/common/user_trusted/cert_AADBBC22238FC401A127BB38DDF41DDB089EF012.pem=cert_AADBBC22238FC401A127BB38DDF41DDB089EF012.pem
+/var/certmgr/common/user_trusted/cert_AD7E1C28B064EF8F6003402014C3D0E3370EB58A.pem=cert_AD7E1C28B064EF8F6003402014C3D0E3370EB58A.pem
+/var/certmgr/common/user_trusted/cert_ADB35DAC2770C885222A892DC0D66274A82797FF.pem=cert_ADB35DAC2770C885222A892DC0D66274A82797FF.pem
+/var/certmgr/common/user_trusted/cert_B172B1A56D95F91FE50287E14D37EA6A4463768A.pem=cert_B172B1A56D95F91FE50287E14D37EA6A4463768A.pem
+/var/certmgr/common/user_trusted/cert_B1BC968BD4F49D622AA89A81F2150152A41D829C.pem=cert_B1BC968BD4F49D622AA89A81F2150152A41D829C.pem
+/var/certmgr/common/user_trusted/cert_B31EB1B740E36C8402DADC37D44DF5D4674952F9.pem=cert_B31EB1B740E36C8402DADC37D44DF5D4674952F9.pem
+/var/certmgr/common/user_trusted/cert_B3EAC44776C9C81CEAF29D95B6CCA0081B67EC9D.pem=cert_B3EAC44776C9C81CEAF29D95B6CCA0081B67EC9D.pem
+/var/certmgr/common/user_trusted/cert_B435D4E1119D1C6690A749EBB394BD637BA782B7.pem=cert_B435D4E1119D1C6690A749EBB394BD637BA782B7.pem
+/var/certmgr/common/user_trusted/cert_B51C067CEE2B0C3DF855AB2D92F4FE39D4E70F0E.pem=cert_B51C067CEE2B0C3DF855AB2D92F4FE39D4E70F0E.pem
+/var/certmgr/common/user_trusted/cert_B80186D1EB9C86A54104CF3054F34C52B7E558C6.pem=cert_B80186D1EB9C86A54104CF3054F34C52B7E558C6.pem
+/var/certmgr/common/user_trusted/cert_B8236B002F1D16865301556C11A437CAEBFFC3BB.pem=cert_B8236B002F1D16865301556C11A437CAEBFFC3BB.pem
+/var/certmgr/common/user_trusted/cert_C8EC8C879269CB4BAB39E98D7E5767F31495739D.pem=cert_C8EC8C879269CB4BAB39E98D7E5767F31495739D.pem
+/var/certmgr/common/user_trusted/cert_CA3AFBCF1240364B44B216208880483919937CF7.pem=cert_CA3AFBCF1240364B44B216208880483919937CF7.pem
+/var/certmgr/common/user_trusted/cert_CE6A64A309E42FBBD9851C453E6409EAE87D60F1.pem=cert_CE6A64A309E42FBBD9851C453E6409EAE87D60F1.pem
+/var/certmgr/common/user_trusted/cert_CF9E876DD3EBFC422697A3B5A37AA076A9062348.pem=cert_CF9E876DD3EBFC422697A3B5A37AA076A9062348.pem
+/var/certmgr/common/user_trusted/cert_D1EB23A46D17D68FD92564C2F1F1601764D8E349.pem=cert_D1EB23A46D17D68FD92564C2F1F1601764D8E349.pem
+/var/certmgr/common/user_trusted/cert_D23209AD23D314232174E40D7F9D62139786633A.pem=cert_D23209AD23D314232174E40D7F9D62139786633A.pem
+/var/certmgr/common/user_trusted/cert_D4DE20D05E66FC53FE1A50882C78DB2852CAE474.pem=cert_D4DE20D05E66FC53FE1A50882C78DB2852CAE474.pem
+/var/certmgr/common/user_trusted/cert_D69B561148F01C77C54578C10926DF5B856976AD.pem=cert_D69B561148F01C77C54578C10926DF5B856976AD.pem
+/var/certmgr/common/user_trusted/cert_D8A6332CE0036FB185F6634F7D6A066526322827.pem=cert_D8A6332CE0036FB185F6634F7D6A066526322827.pem
+/var/certmgr/common/user_trusted/cert_D8C5388AB7301B1B6ED47AE645253A6F9F1A2761.pem=cert_D8C5388AB7301B1B6ED47AE645253A6F9F1A2761.pem
+/var/certmgr/common/user_trusted/cert_DA40188B9189A3EDEEAEDA97FE2F9DF5B7D18A41.pem=cert_DA40188B9189A3EDEEAEDA97FE2F9DF5B7D18A41.pem
+/var/certmgr/common/user_trusted/cert_DE28F4A4FFE5B92FA3C503D1A349A7F9962A8212.pem=cert_DE28F4A4FFE5B92FA3C503D1A349A7F9962A8212.pem
+/var/certmgr/common/user_trusted/cert_DE3F40BD5093D39B6C60F6DABC076201008976C9.pem=cert_DE3F40BD5093D39B6C60F6DABC076201008976C9.pem
+/var/certmgr/common/user_trusted/cert_E0AB059420725493056062023670F7CD2EFC6666.pem=cert_E0AB059420725493056062023670F7CD2EFC6666.pem
+/var/certmgr/common/user_trusted/cert_E621F3354379059A4B68309D8A2F74221587EC79.pem=cert_E621F3354379059A4B68309D8A2F74221587EC79.pem
+/var/certmgr/common/user_trusted/cert_F17F6FB631DC99E3A3C87FFE1CF1811088D96033.pem=cert_F17F6FB631DC99E3A3C87FFE1CF1811088D96033.pem
+/var/certmgr/common/user_trusted/cert_F18B538D1BE903B6A6F056435B171589CAF36BF2.pem=cert_F18B538D1BE903B6A6F056435B171589CAF36BF2.pem
+/var/certmgr/common/user_trusted/cert_F373B387065A28848AF2F34ACE192BDDC78E9CAC.pem=cert_F373B387065A28848AF2F34ACE192BDDC78E9CAC.pem
+/var/certmgr/common/user_trusted/cert_F9B5B632455F9CBEEC575F80DCE96E2CC7B278B7.pem=cert_F9B5B632455F9CBEEC575F80DCE96E2CC7B278B7.pem
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+###########################################################################
+## fonts
+###########################################################################
+[search=${QNX_TARGET}/usr/fonts/font_repository/monotype]
+/usr/fonts/font_repository/monotype/arial.ttf=arial.ttf
+/usr/fonts/font_repository/monotype/arialbd.ttf=arialbd.ttf
+/usr/fonts/font_repository/monotype/ariali.ttf=ariali.ttf
+/usr/fonts/font_repository/monotype/cour.ttf=cour.ttf
+/usr/fonts/font_repository/monotype/tahoma.ttf=tahoma.ttf
+/usr/fonts/font_repository/monotype/tahomabd.ttf=tahomabd.ttf
+/usr/fonts/font_repository/monotype/times.ttf=times.ttf
+/usr/fonts/font_repository/monotype/timesbd.ttf=timesbd.ttf
+/usr/fonts/font_repository/monotype/verdana.ttf=verdana.ttf
+/usr/fonts/font_repository/monotype/verdanab.ttf=verdanab.ttf
+
+[search=${QNX_TARGET}/usr/fonts/font_repository/ttf-bitstream-vera-1.10]
+/usr/fonts/font_repository/ttf-bitstream-vera-1.10/Vera.ttf=Vera.ttf
+/usr/fonts/font_repository/ttf-bitstream-vera-1.10/VeraBd.ttf=VeraBd.ttf
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+###########################################################################
+## fontconfig
+###########################################################################
+[search=${QNX_TARGET}/etc/fontconfig/conf.avail]
+/etc/fontconfig/conf.avail/10-autohint.conf=10-autohint.conf
+/etc/fontconfig/conf.avail/10-no-sub-pixel.conf=10-no-sub-pixel.conf
+/etc/fontconfig/conf.avail/10-sub-pixel-bgr.conf=10-sub-pixel-bgr.conf
+/etc/fontconfig/conf.avail/10-sub-pixel-rgb.conf=10-sub-pixel-rgb.conf
+/etc/fontconfig/conf.avail/10-sub-pixel-vbgr.conf=10-sub-pixel-vbgr.conf
+/etc/fontconfig/conf.avail/10-sub-pixel-vrgb.conf=10-sub-pixel-vrgb.conf
+/etc/fontconfig/conf.avail/10-unhinted.conf=10-unhinted.conf
+/etc/fontconfig/conf.avail/20-fix-globaladvance.conf=20-fix-globaladvance.conf
+/etc/fontconfig/conf.avail/20-unhint-small-vera.conf=20-unhint-small-vera.conf
+/etc/fontconfig/conf.avail/25-unhint-nonlatin.conf=25-unhint-nonlatin.conf
+/etc/fontconfig/conf.avail/30-metric-aliases.conf=30-metric-aliases.conf
+/etc/fontconfig/conf.avail/30-urw-aliases.conf=30-urw-aliases.conf
+/etc/fontconfig/conf.avail/40-nonlatin.conf=40-nonlatin.conf
+/etc/fontconfig/conf.avail/45-latin.conf=45-latin.conf
+/etc/fontconfig/conf.avail/49-sansserif.conf=49-sansserif.conf
+/etc/fontconfig/conf.avail/50-user.conf=50-user.conf
+/etc/fontconfig/conf.avail/51-local.conf=51-local.conf
+/etc/fontconfig/conf.avail/60-latin.conf=60-latin.conf
+/etc/fontconfig/conf.avail/65-fonts-persian.conf=65-fonts-persian.conf
+/etc/fontconfig/conf.avail/65-khmer.conf=65-khmer.conf
+/etc/fontconfig/conf.avail/65-nonlatin.conf=65-nonlatin.conf
+/etc/fontconfig/conf.avail/69-unifont.conf=69-unifont.conf
+/etc/fontconfig/conf.avail/70-no-bitmaps.conf=70-no-bitmaps.conf
+/etc/fontconfig/conf.avail/70-yes-bitmaps.conf=70-yes-bitmaps.conf
+/etc/fontconfig/conf.avail/80-delicious.conf=80-delicious.conf
+/etc/fontconfig/conf.avail/90-synthetic.conf=90-synthetic.conf
+
+[type=link]/etc/fontconfig/conf.d/20-fix-globaladvance.conf=/etc/fontconfig/conf.avail/20-fix-globaladvance.conf
+[type=link]/etc/fontconfig/conf.d/20-unhint-small-vera.conf=/etc/fontconfig/conf.avail20-unhint-small-vera.conf
+[type=link]/etc/fontconfig/conf.d/30-metric-aliases.conf=/etc/fontconfig/conf.avail30-metric-aliases.conf
+[type=link]/etc/fontconfig/conf.d/30-urw-aliases.conf=/etc/fontconfig/conf.avail30-urw-aliases.conf
+[type=link]/etc/fontconfig/conf.d/40-nonlatin.conf=/etc/fontconfig/conf.avail40-nonlatin.conf
+[type=link]/etc/fontconfig/conf.d/45-latin.conf=/etc/fontconfig/conf.avail45-latin.conf
+[type=link]/etc/fontconfig/conf.d/49-sansserif.conf=/etc/fontconfig/conf.avail49-sansserif.conf
+[type=link]/etc/fontconfig/conf.d/50-user.conf=/etc/fontconfig/conf.avail50-user.conf
+[type=link]/etc/fontconfig/conf.d/51-local.conf=/etc/fontconfig/conf.avail51-local.conf
+[type=link]/etc/fontconfig/conf.d/60-latin.conf=/etc/fontconfig/conf.avail60-latin.conf
+[type=link]/etc/fontconfig/conf.d/65-fonts-persian.conf=/etc/fontconfig/conf.avail65-fonts-persian.conf
+[type=link]/etc/fontconfig/conf.d/65-nonlatin.conf=/etc/fontconfig/conf.avail65-nonlatin.conf
+[type=link]/etc/fontconfig/conf.d/69-unifont.conf=/etc/fontconfig/conf.avail69-unifont.conf
+[type=link]/etc/fontconfig/conf.d/80-delicious.conf=/etc/fontconfig/conf.avail80-delicious.conf
+[type=link]/etc/fontconfig/conf.d/90-synthetic.conf=/etc/fontconfig/conf.avail90-synthetic.conf
+
+[search=${QNX_TARGET}/etc/fontconfig]
+/etc/fontconfig/fonts.conf=fonts.conf                  
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+###########################################################################
+## webkit
+###########################################################################
+/lib/libhugbp.so.1=libhugbp.so.1
+/lib/libharfbuzz.so.0.3=libharfbuzz.so.0.3
+/lib/libinput_client.so.1=libinput_client.so.1
+/lib/libinput_utilities.so.1=libinput_utilities.so.1
+/lib/libphone-number.so.1=libphone-number.so.1
+/usr/bin/weblauncher=weblauncher
+/usr/lib/libcamapi.so.1=libcamapi.so.1
+/usr/lib/libfontconfig.so.1=libfontconfig.so.1
+/usr/lib/libgoogleurl.so.0.1=libgoogleurl.so.0.1
+/usr/lib/libgrskia.so.1.0=libgrskia.so.1.0
+/usr/lib/libharfbuzzng.so.0.9.17=libharfbuzzng.so.0.9.17
+/usr/lib/libstrpattern.so.1=libstrpattern.so.1
+/usr/lib/libwebkitplatform.so.0.1=libwebkitplatform.so.0.1
+/usr/lib/libwebkit.so.0.1=libwebkit.so.0.1
+/usr/lib/libwebview.so.2.0=libwebview.so.2.0
+/usr/lib/webplatform/plugins/jnext/jpps.so=webplatform/plugins/jnext/jpps.so
+/usr/lib/webplatform/plugins/jnext/jqdb.so=webplatform/plugins/jnext/jqdb.so
+/usr/lib/webplatform/plugins/jnext/jscreen.so=webplatform/plugins/jnext/jscreen.so
+/usr/lib/webplatform/plugins/jnext.so=webplatform/plugins/jnext.so
+[type=link]/base/bin/webkit-launcher=/usr/bin/weblauncher
+[type=link] /lib/libharfbuzz.so.0=/lib/libharfbuzz.so.0.3
+[type=link]/usr/lib/libgoogleurl.so.0=/usr/lib/libgoogleurl.so.0.1
+[type=link]/usr/lib/libgrskia.so.1=/usr/lib/libgrskia.so.1.0
+[type=link] /usr/lib/libharfbuzzng.so.0.9=/usr/lib/libharfbuzzng.so.0.9.17
+[type=link] /usr/lib/libharfbuzzng.so.0=/usr/lib/libharfbuzzng.so.0.9.17
+[type=link]/usr/lib/libwebkitplatform.so.0=/usr/lib/libwebkitplatform.so.0.1
+[type=link] /usr/lib/libwebkit.so.0=/usr/lib/libwebkit.so.0.1
+[type=link]/usr/lib/libwebview.so.2=/usr/lib/libwebview.so.2.0
+
+[search=${QNX_TARGET}/usr/share/webkit/inspector/cm]
+/usr/share/webkit/inspector/cm/codemirror.css=codemirror.css
+/usr/share/webkit/inspector/cm/codemirror.js=codemirror.js
+/usr/share/webkit/inspector/cm/css.js=css.js
+/usr/share/webkit/inspector/cm/htmlmixed.js=htmlmixed.js
+/usr/share/webkit/inspector/cm/javascript.js=javascript.js
+/usr/share/webkit/inspector/cm/xml.js=xml.js
+
+[search=${QNX_TARGET}/usr/share/webkit/inspector/Images]
+/usr/share/webkit/inspector/Images/applicationCache.png=applicationCache.png
+/usr/share/webkit/inspector/Images/back.png=back.png
+/usr/share/webkit/inspector/Images/breakpointBorder.png=breakpointBorder.png
+/usr/share/webkit/inspector/Images/breakpointConditionalBorder.png=breakpointConditionalBorder.png
+/usr/share/webkit/inspector/Images/breakpointConditionalCounterBorder.png=breakpointConditionalCounterBorder.png
+/usr/share/webkit/inspector/Images/breakpointCounterBorder.png=breakpointCounterBorder.png
+/usr/share/webkit/inspector/Images/checker.png=checker.png
+/usr/share/webkit/inspector/Images/closeButtons.png=closeButtons.png
+/usr/share/webkit/inspector/Images/cookie.png=cookie.png
+/usr/share/webkit/inspector/Images/database.png=database.png
+/usr/share/webkit/inspector/Images/databaseTable.png=databaseTable.png
+/usr/share/webkit/inspector/Images/debuggerContinue.png=debuggerContinue.png
+/usr/share/webkit/inspector/Images/debuggerPause.png=debuggerPause.png
+/usr/share/webkit/inspector/Images/debuggerStepInto.png=debuggerStepInto.png
+/usr/share/webkit/inspector/Images/debuggerStepOut.png=debuggerStepOut.png
+/usr/share/webkit/inspector/Images/debuggerStepOver.png=debuggerStepOver.png
+/usr/share/webkit/inspector/Images/deleteIcon.png=deleteIcon.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallDown.png=disclosureTriangleSmallDown.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallDownBlack.png=disclosureTriangleSmallDownBlack.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallDownWhite.png=disclosureTriangleSmallDownWhite.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallRight.png=disclosureTriangleSmallRight.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallRightBlack.png=disclosureTriangleSmallRightBlack.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallRightDown.png=disclosureTriangleSmallRightDown.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallRightDownBlack.png=disclosureTriangleSmallRightDownBlack.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallRightDownWhite.png=disclosureTriangleSmallRightDownWhite.png
+/usr/share/webkit/inspector/Images/disclosureTriangleSmallRightWhite.png=disclosureTriangleSmallRightWhite.png
+/usr/share/webkit/inspector/Images/domain.png=domain.png
+/usr/share/webkit/inspector/Images/errorIcon.png=errorIcon.png
+/usr/share/webkit/inspector/Images/errorMediumIcon.png=errorMediumIcon.png
+/usr/share/webkit/inspector/Images/errorRedDot.png=errorRedDot.png
+/usr/share/webkit/inspector/Images/fileSystem.png=fileSystem.png
+/usr/share/webkit/inspector/Images/forward.png=forward.png
+/usr/share/webkit/inspector/Images/frame.png=frame.png
+/usr/share/webkit/inspector/Images/glossyHeader.png=glossyHeader.png
+/usr/share/webkit/inspector/Images/glossyHeaderPressed.png=glossyHeaderPressed.png
+/usr/share/webkit/inspector/Images/glossyHeaderSelected.png=glossyHeaderSelected.png
+/usr/share/webkit/inspector/Images/glossyHeaderSelectedPressed.png=glossyHeaderSelectedPressed.png
+/usr/share/webkit/inspector/Images/goArrow.png=goArrow.png
+/usr/share/webkit/inspector/Images/graphLabelCalloutLeft.png=graphLabelCalloutLeft.png
+/usr/share/webkit/inspector/Images/graphLabelCalloutRight.png=graphLabelCalloutRight.png
+/usr/share/webkit/inspector/Images/indexedDB.png=indexedDB.png
+/usr/share/webkit/inspector/Images/indexedDBIndex.png=indexedDBIndex.png
+/usr/share/webkit/inspector/Images/indexedDBObjectStore.png=indexedDBObjectStore.png
+/usr/share/webkit/inspector/Images/localStorage.png=localStorage.png
+/usr/share/webkit/inspector/Images/navigatorShowHideButton.png=navigatorShowHideButton.png
+/usr/share/webkit/inspector/Images/paneAddButtons.png=paneAddButtons.png
+/usr/share/webkit/inspector/Images/paneBottomGrow.png=paneBottomGrow.png
+/usr/share/webkit/inspector/Images/paneBottomGrowActive.png=paneBottomGrowActive.png
+/usr/share/webkit/inspector/Images/paneElementStateButtons.png=paneElementStateButtons.png
+/usr/share/webkit/inspector/Images/paneFilterButtons.png=paneFilterButtons.png
+/usr/share/webkit/inspector/Images/paneGrowHandleLine.png=paneGrowHandleLine.png
+/usr/share/webkit/inspector/Images/paneRefreshButtons.png=paneRefreshButtons.png
+/usr/share/webkit/inspector/Images/paneSettingsButtons.png=paneSettingsButtons.png
+/usr/share/webkit/inspector/Images/popoverArrows.png=popoverArrows.png
+/usr/share/webkit/inspector/Images/popoverBackground.png=popoverBackground.png
+/usr/share/webkit/inspector/Images/profileGroupIcon.png=profileGroupIcon.png
+/usr/share/webkit/inspector/Images/profileIcon.png=profileIcon.png
+/usr/share/webkit/inspector/Images/profileSmallIcon.png=profileSmallIcon.png
+/usr/share/webkit/inspector/Images/profilesSilhouette.png=profilesSilhouette.png
+/usr/share/webkit/inspector/Images/programCounterBorder.png=programCounterBorder.png
+/usr/share/webkit/inspector/Images/radioDot.png=radioDot.png
+/usr/share/webkit/inspector/Images/resourceCSSIcon.png=resourceCSSIcon.png
+/usr/share/webkit/inspector/Images/resourceDocumentIcon.png=resourceDocumentIcon.png
+/usr/share/webkit/inspector/Images/resourceDocumentIconSmall.png=resourceDocumentIconSmall.png
+/usr/share/webkit/inspector/Images/resourceJSIcon.png=resourceJSIcon.png
+/usr/share/webkit/inspector/Images/resourcePlainIcon.png=resourcePlainIcon.png
+/usr/share/webkit/inspector/Images/resourcePlainIconSmall.png=resourcePlainIconSmall.png
+/usr/share/webkit/inspector/Images/resourcesSizeGraphIcon.png=resourcesSizeGraphIcon.png
+/usr/share/webkit/inspector/Images/resourcesTimeGraphIcon.png=resourcesTimeGraphIcon.png
+/usr/share/webkit/inspector/Images/scriptsSilhouette.png=scriptsSilhouette.png
+/usr/share/webkit/inspector/Images/searchNext.png=searchNext.png
+/usr/share/webkit/inspector/Images/searchPrev.png=searchPrev.png
+/usr/share/webkit/inspector/Images/searchSmallBlue.png=searchSmallBlue.png
+/usr/share/webkit/inspector/Images/searchSmallBrightBlue.png=searchSmallBrightBlue.png
+/usr/share/webkit/inspector/Images/searchSmallGray.png=searchSmallGray.png
+/usr/share/webkit/inspector/Images/searchSmallWhite.png=searchSmallWhite.png
+/usr/share/webkit/inspector/Images/segment.png=segment.png
+/usr/share/webkit/inspector/Images/segmentEnd.png=segmentEnd.png
+/usr/share/webkit/inspector/Images/segmentHover.png=segmentHover.png
+/usr/share/webkit/inspector/Images/segmentHoverEnd.png=segmentHoverEnd.png
+/usr/share/webkit/inspector/Images/segmentSelected.png=segmentSelected.png
+/usr/share/webkit/inspector/Images/segmentSelectedEnd.png=segmentSelectedEnd.png
+/usr/share/webkit/inspector/Images/sessionStorage.png=sessionStorage.png
+/usr/share/webkit/inspector/Images/spinner.gif=spinner.gif
+/usr/share/webkit/inspector/Images/spinnerActive.gif=spinnerActive.gif
+/usr/share/webkit/inspector/Images/spinnerActiveSelected.gif=spinnerActiveSelected.gif
+/usr/share/webkit/inspector/Images/spinnerInactive.gif=spinnerInactive.gif
+/usr/share/webkit/inspector/Images/spinnerInactiveSelected.gif=spinnerInactiveSelected.gif
+/usr/share/webkit/inspector/Images/splitviewDimple.png=splitviewDimple.png
+/usr/share/webkit/inspector/Images/splitviewDividerBackground.png=splitviewDividerBackground.png
+/usr/share/webkit/inspector/Images/statusbarButtonGlyphs.png=statusbarButtonGlyphs.png
+/usr/share/webkit/inspector/Images/statusbarButtonGlyphs2x.png=statusbarButtonGlyphs2x.png
+/usr/share/webkit/inspector/Images/statusbarResizerHorizontal.png=statusbarResizerHorizontal.png
+/usr/share/webkit/inspector/Images/statusbarResizerVertical.png=statusbarResizerVertical.png
+/usr/share/webkit/inspector/Images/successGreenDot.png=successGreenDot.png
+/usr/share/webkit/inspector/Images/thumbActiveHoriz.png=thumbActiveHoriz.png
+/usr/share/webkit/inspector/Images/thumbActiveVert.png=thumbActiveVert.png
+/usr/share/webkit/inspector/Images/thumbHoriz.png=thumbHoriz.png
+/usr/share/webkit/inspector/Images/thumbHoverHoriz.png=thumbHoverHoriz.png
+/usr/share/webkit/inspector/Images/thumbHoverVert.png=thumbHoverVert.png
+/usr/share/webkit/inspector/Images/thumbVert.png=thumbVert.png
+/usr/share/webkit/inspector/Images/tickMark.png=tickMark.png
+/usr/share/webkit/inspector/Images/timelineHollowPillBlue.png=timelineHollowPillBlue.png
+/usr/share/webkit/inspector/Images/timelineHollowPillGray.png=timelineHollowPillGray.png
+/usr/share/webkit/inspector/Images/timelineHollowPillGreen.png=timelineHollowPillGreen.png
+/usr/share/webkit/inspector/Images/timelineHollowPillOrange.png=timelineHollowPillOrange.png
+/usr/share/webkit/inspector/Images/timelineHollowPillPurple.png=timelineHollowPillPurple.png
+/usr/share/webkit/inspector/Images/timelineHollowPillRed.png=timelineHollowPillRed.png
+/usr/share/webkit/inspector/Images/timelineHollowPillYellow.png=timelineHollowPillYellow.png
+/usr/share/webkit/inspector/Images/timelinePillBlue.png=timelinePillBlue.png
+/usr/share/webkit/inspector/Images/timelinePillGray.png=timelinePillGray.png
+/usr/share/webkit/inspector/Images/timelinePillGreen.png=timelinePillGreen.png
+/usr/share/webkit/inspector/Images/timelinePillOrange.png=timelinePillOrange.png
+/usr/share/webkit/inspector/Images/timelinePillPurple.png=timelinePillPurple.png
+/usr/share/webkit/inspector/Images/timelinePillRed.png=timelinePillRed.png
+/usr/share/webkit/inspector/Images/timelinePillYellow.png=timelinePillYellow.png
+/usr/share/webkit/inspector/Images/toolbarIcons.png=toolbarIcons.png
+/usr/share/webkit/inspector/Images/toolbarIconsSmall.png=toolbarIconsSmall.png
+/usr/share/webkit/inspector/Images/toolbarItemSelected.png=toolbarItemSelected.png
+/usr/share/webkit/inspector/Images/trackHoriz.png=trackHoriz.png
+/usr/share/webkit/inspector/Images/trackVert.png=trackVert.png
+/usr/share/webkit/inspector/Images/treeDownTriangleBlack.png=treeDownTriangleBlack.png
+/usr/share/webkit/inspector/Images/treeDownTriangleWhite.png=treeDownTriangleWhite.png
+/usr/share/webkit/inspector/Images/treeRightTriangleBlack.png=treeRightTriangleBlack.png
+/usr/share/webkit/inspector/Images/treeRightTriangleWhite.png=treeRightTriangleWhite.png
+/usr/share/webkit/inspector/Images/treeUpTriangleBlack.png=treeUpTriangleBlack.png
+/usr/share/webkit/inspector/Images/treeUpTriangleWhite.png=treeUpTriangleWhite.png
+/usr/share/webkit/inspector/Images/userInputIcon.png=userInputIcon.png
+/usr/share/webkit/inspector/Images/userInputPreviousIcon.png=userInputPreviousIcon.png
+/usr/share/webkit/inspector/Images/userInputResultIcon.png=userInputResultIcon.png
+/usr/share/webkit/inspector/Images/warningIcon.png=warningIcon.png
+/usr/share/webkit/inspector/Images/warningMediumIcon.png=warningMediumIcon.png
+/usr/share/webkit/inspector/Images/warningOrangeDot.png=warningOrangeDot.png
+/usr/share/webkit/inspector/Images/warningsErrors.png=warningsErrors.png
+
+[search=${QNX_TARGET}/usr/share/webkit/inspector/UglifyJS]
+/usr/share/webkit/inspector/UglifyJS/parse-js.js=parse-js.js
+
+[search=${QNX_TARGET}/usr/share/webkit/inspector]
+/usr/share/webkit/inspector/AdvancedSearchController.js=AdvancedSearchController.js
+/usr/share/webkit/inspector/ApplicationCacheItemsView.js=ApplicationCacheItemsView.js
+/usr/share/webkit/inspector/ApplicationCacheModel.js=ApplicationCacheModel.js
+/usr/share/webkit/inspector/AuditCategories.js=AuditCategories.js
+/usr/share/webkit/inspector/AuditFormatters.js=AuditFormatters.js
+/usr/share/webkit/inspector/AuditLauncherView.js=AuditLauncherView.js
+/usr/share/webkit/inspector/AuditResultView.js=AuditResultView.js
+/usr/share/webkit/inspector/AuditRules.js=AuditRules.js
+/usr/share/webkit/inspector/auditsPanel.css=auditsPanel.css
+/usr/share/webkit/inspector/AuditsPanel.js=AuditsPanel.js
+/usr/share/webkit/inspector/BottomUpProfileDataGridTree.js=BottomUpProfileDataGridTree.js
+/usr/share/webkit/inspector/breadcrumbList.css=breadcrumbList.css
+/usr/share/webkit/inspector/BreakpointManager.js=BreakpointManager.js
+/usr/share/webkit/inspector/BreakpointsSidebarPane.js=BreakpointsSidebarPane.js
+/usr/share/webkit/inspector/CallStackSidebarPane.js=CallStackSidebarPane.js
+/usr/share/webkit/inspector/Checkbox.js=Checkbox.js
+/usr/share/webkit/inspector/cmdevtools.css=cmdevtools.css
+/usr/share/webkit/inspector/CodeMirrorTextEditor.js=CodeMirrorTextEditor.js
+/usr/share/webkit/inspector/Color.js=Color.js
+/usr/share/webkit/inspector/CompilerScriptMapping.js=CompilerScriptMapping.js
+/usr/share/webkit/inspector/ConsoleMessage.js=ConsoleMessage.js
+/usr/share/webkit/inspector/ConsoleModel.js=ConsoleModel.js
+/usr/share/webkit/inspector/ConsolePanel.js=ConsolePanel.js
+/usr/share/webkit/inspector/ConsoleView.js=ConsoleView.js
+/usr/share/webkit/inspector/ContentProvider.js=ContentProvider.js
+/usr/share/webkit/inspector/ContentProviders.js=ContentProviders.js
+/usr/share/webkit/inspector/ContextMenu.js=ContextMenu.js
+/usr/share/webkit/inspector/CookieItemsView.js=CookieItemsView.js
+/usr/share/webkit/inspector/CookieParser.js=CookieParser.js
+/usr/share/webkit/inspector/CookiesTable.js=CookiesTable.js
+/usr/share/webkit/inspector/CPUProfileView.js=CPUProfileView.js
+/usr/share/webkit/inspector/CSSCompletions.js=CSSCompletions.js
+/usr/share/webkit/inspector/CSSKeywordCompletions.js=CSSKeywordCompletions.js
+/usr/share/webkit/inspector/CSSSelectorProfileView.js=CSSSelectorProfileView.js
+/usr/share/webkit/inspector/CSSStyleModel.js=CSSStyleModel.js
+/usr/share/webkit/inspector/Database.js=Database.js
+/usr/share/webkit/inspector/DatabaseQueryView.js=DatabaseQueryView.js
+/usr/share/webkit/inspector/DatabaseTableView.js=DatabaseTableView.js
+/usr/share/webkit/inspector/dataGrid.css=dataGrid.css
+/usr/share/webkit/inspector/DataGrid.js=DataGrid.js
+/usr/share/webkit/inspector/DebuggerModel.js=DebuggerModel.js
+/usr/share/webkit/inspector/DebuggerScriptMapping.js=DebuggerScriptMapping.js
+/usr/share/webkit/inspector/DefaultTextEditor.js=DefaultTextEditor.js
+/usr/share/webkit/inspector/dialog.css=dialog.css
+/usr/share/webkit/inspector/Dialog.js=Dialog.js
+/usr/share/webkit/inspector/DirectoryContentView.js=DirectoryContentView.js
+/usr/share/webkit/inspector/DOMAgent.js=DOMAgent.js
+/usr/share/webkit/inspector/DOMBreakpointsSidebarPane.js=DOMBreakpointsSidebarPane.js
+/usr/share/webkit/inspector/DOMExtension.js=DOMExtension.js
+/usr/share/webkit/inspector/DOMPresentationUtils.js=DOMPresentationUtils.js
+/usr/share/webkit/inspector/DOMStorage.js=DOMStorage.js
+/usr/share/webkit/inspector/DOMStorageItemsView.js=DOMStorageItemsView.js
+/usr/share/webkit/inspector/DOMSyntaxHighlighter.js=DOMSyntaxHighlighter.js
+/usr/share/webkit/inspector/Drawer.js=Drawer.js
+/usr/share/webkit/inspector/elementsPanel.css=elementsPanel.css
+/usr/share/webkit/inspector/ElementsPanel.js=ElementsPanel.js
+/usr/share/webkit/inspector/ElementsPanelDescriptor.js=ElementsPanelDescriptor.js
+/usr/share/webkit/inspector/ElementsTreeOutline.js=ElementsTreeOutline.js
+/usr/share/webkit/inspector/EmptyView.js=EmptyView.js
+/usr/share/webkit/inspector/EventListenersSidebarPane.js=EventListenersSidebarPane.js
+/usr/share/webkit/inspector/ExtensionAPI.js=ExtensionAPI.js
+/usr/share/webkit/inspector/ExtensionAuditCategory.js=ExtensionAuditCategory.js
+/usr/share/webkit/inspector/ExtensionPanel.js=ExtensionPanel.js
+/usr/share/webkit/inspector/ExtensionRegistryStub.js=ExtensionRegistryStub.js
+/usr/share/webkit/inspector/ExtensionServer.js=ExtensionServer.js
+/usr/share/webkit/inspector/ExtensionView.js=ExtensionView.js
+/usr/share/webkit/inspector/externs.js=externs.js
+/usr/share/webkit/inspector/FileContentView.js=FileContentView.js
+/usr/share/webkit/inspector/FileManager.js=FileManager.js
+/usr/share/webkit/inspector/FileSystemModel.js=FileSystemModel.js
+/usr/share/webkit/inspector/FileSystemView.js=FileSystemView.js
+/usr/share/webkit/inspector/FileUtils.js=FileUtils.js
+/usr/share/webkit/inspector/filteredItemSelectionDialog.css=filteredItemSelectionDialog.css
+/usr/share/webkit/inspector/FilteredItemSelectionDialog.js=FilteredItemSelectionDialog.js
+/usr/share/webkit/inspector/FontView.js=FontView.js
+/usr/share/webkit/inspector/GoToLineDialog.js=GoToLineDialog.js
+/usr/share/webkit/inspector/HandlerRegistry.js=HandlerRegistry.js
+/usr/share/webkit/inspector/HAREntry.js=HAREntry.js
+/usr/share/webkit/inspector/heapProfiler.css=heapProfiler.css
+/usr/share/webkit/inspector/HeapSnapshot.js=HeapSnapshot.js
+/usr/share/webkit/inspector/HeapSnapshotDataGrids.js=HeapSnapshotDataGrids.js
+/usr/share/webkit/inspector/HeapSnapshotGridNodes.js=HeapSnapshotGridNodes.js
+/usr/share/webkit/inspector/HeapSnapshotLoader.js=HeapSnapshotLoader.js
+/usr/share/webkit/inspector/HeapSnapshotProxy.js=HeapSnapshotProxy.js
+/usr/share/webkit/inspector/HeapSnapshotView.js=HeapSnapshotView.js
+/usr/share/webkit/inspector/HeapSnapshotWorker.js=HeapSnapshotWorker.js
+/usr/share/webkit/inspector/HeapSnapshotWorkerDispatcher.js=HeapSnapshotWorkerDispatcher.js
+/usr/share/webkit/inspector/helpScreen.css=helpScreen.css
+/usr/share/webkit/inspector/HelpScreen.js=HelpScreen.js
+/usr/share/webkit/inspector/ImageView.js=ImageView.js
+/usr/share/webkit/inspector/IndexedDBModel.js=IndexedDBModel.js
+/usr/share/webkit/inspector/indexedDBViews.css=indexedDBViews.css
+/usr/share/webkit/inspector/IndexedDBViews.js=IndexedDBViews.js
+/usr/share/webkit/inspector/inspector.css=inspector.css
+/usr/share/webkit/inspector/inspector.js=inspector.js
+/usr/share/webkit/inspector/InspectorBackend.js=InspectorBackend.js
+/usr/share/webkit/inspector/InspectorBackendCommands.js=InspectorBackendCommands.js
+/usr/share/webkit/inspector/inspectorBB.html=inspectorBB.html
+/usr/share/webkit/inspector/inspectorBB.js=inspectorBB.js
+/usr/share/webkit/inspector/inspectorCommon.css=inspectorCommon.css
+/usr/share/webkit/inspector/InspectorFrontendAPI.js=InspectorFrontendAPI.js
+/usr/share/webkit/inspector/InspectorFrontendHostStub.js=InspectorFrontendHostStub.js
+/usr/share/webkit/inspector/inspectorSyntaxHighlight.css=inspectorSyntaxHighlight.css
+/usr/share/webkit/inspector/InspectorView.js=InspectorView.js
+/usr/share/webkit/inspector/JavaScriptFormatter.js=JavaScriptFormatter.js
+/usr/share/webkit/inspector/JavaScriptSource.js=JavaScriptSource.js
+/usr/share/webkit/inspector/JavaScriptSourceFrame.js=JavaScriptSourceFrame.js
+/usr/share/webkit/inspector/jsdifflib.js=jsdifflib.js
+/usr/share/webkit/inspector/KeyboardShortcut.js=KeyboardShortcut.js
+/usr/share/webkit/inspector/Linkifier.js=Linkifier.js
+/usr/share/webkit/inspector/MemoryStatistics.js=MemoryStatistics.js
+/usr/share/webkit/inspector/MetricsSidebarPane.js=MetricsSidebarPane.js
+/usr/share/webkit/inspector/NativeBreakpointsSidebarPane.js=NativeBreakpointsSidebarPane.js
+/usr/share/webkit/inspector/nativeMemoryProfiler.css=nativeMemoryProfiler.css
+/usr/share/webkit/inspector/NativeMemorySnapshotView.js=NativeMemorySnapshotView.js
+/usr/share/webkit/inspector/NavigatorOverlayController.js=NavigatorOverlayController.js
+/usr/share/webkit/inspector/navigatorView.css=navigatorView.css
+/usr/share/webkit/inspector/NavigatorView.js=NavigatorView.js
+/usr/share/webkit/inspector/NetworkItemView.js=NetworkItemView.js
+/usr/share/webkit/inspector/NetworkLog.js=NetworkLog.js
+/usr/share/webkit/inspector/networkLogView.css=networkLogView.css
+/usr/share/webkit/inspector/NetworkManager.js=NetworkManager.js
+/usr/share/webkit/inspector/networkPanel.css=networkPanel.css
+/usr/share/webkit/inspector/NetworkPanel.js=NetworkPanel.js
+/usr/share/webkit/inspector/NetworkPanelDescriptor.js=NetworkPanelDescriptor.js
+/usr/share/webkit/inspector/NetworkRequest.js=NetworkRequest.js
+/usr/share/webkit/inspector/NetworkUISourceCodeProvider.js=NetworkUISourceCodeProvider.js
+/usr/share/webkit/inspector/Object.js=Object.js
+/usr/share/webkit/inspector/ObjectPopoverHelper.js=ObjectPopoverHelper.js
+/usr/share/webkit/inspector/ObjectPropertiesSection.js=ObjectPropertiesSection.js
+/usr/share/webkit/inspector/Panel.js=Panel.js
+/usr/share/webkit/inspector/panelEnablerView.css=panelEnablerView.css
+/usr/share/webkit/inspector/PanelEnablerView.js=PanelEnablerView.js
+/usr/share/webkit/inspector/ParsedURL.js=ParsedURL.js
+/usr/share/webkit/inspector/Placard.js=Placard.js
+/usr/share/webkit/inspector/popover.css=popover.css
+/usr/share/webkit/inspector/Popover.js=Popover.js
+/usr/share/webkit/inspector/PresentationConsoleMessageHelper.js=PresentationConsoleMessageHelper.js
+/usr/share/webkit/inspector/ProfileDataGridTree.js=ProfileDataGridTree.js
+/usr/share/webkit/inspector/ProfileLauncherView.js=ProfileLauncherView.js
+/usr/share/webkit/inspector/profilesPanel.css=profilesPanel.css
+/usr/share/webkit/inspector/ProfilesPanel.js=ProfilesPanel.js
+/usr/share/webkit/inspector/ProgressBar.js=ProgressBar.js
+/usr/share/webkit/inspector/PropertiesSection.js=PropertiesSection.js
+/usr/share/webkit/inspector/PropertiesSidebarPane.js=PropertiesSidebarPane.js
+/usr/share/webkit/inspector/RawSourceCode.js=RawSourceCode.js
+/usr/share/webkit/inspector/RemoteObject.js=RemoteObject.js
+/usr/share/webkit/inspector/RequestCookiesView.js=RequestCookiesView.js
+/usr/share/webkit/inspector/RequestHeadersView.js=RequestHeadersView.js
+/usr/share/webkit/inspector/RequestHTMLView.js=RequestHTMLView.js
+/usr/share/webkit/inspector/RequestJSONView.js=RequestJSONView.js
+/usr/share/webkit/inspector/RequestPreviewView.js=RequestPreviewView.js
+/usr/share/webkit/inspector/RequestResponseView.js=RequestResponseView.js
+/usr/share/webkit/inspector/RequestTimingView.js=RequestTimingView.js
+/usr/share/webkit/inspector/RequestView.js=RequestView.js
+/usr/share/webkit/inspector/Resource.js=Resource.js
+/usr/share/webkit/inspector/ResourceScriptMapping.js=ResourceScriptMapping.js
+/usr/share/webkit/inspector/resourcesPanel.css=resourcesPanel.css
+/usr/share/webkit/inspector/ResourcesPanel.js=ResourcesPanel.js
+/usr/share/webkit/inspector/ResourceTreeModel.js=ResourceTreeModel.js
+/usr/share/webkit/inspector/ResourceType.js=ResourceType.js
+/usr/share/webkit/inspector/ResourceUtils.js=ResourceUtils.js
+/usr/share/webkit/inspector/resourceView.css=resourceView.css
+/usr/share/webkit/inspector/ResourceView.js=ResourceView.js
+/usr/share/webkit/inspector/ResourceWebSocketFrameView.js=ResourceWebSocketFrameView.js
+/usr/share/webkit/inspector/revisionHistory.css=revisionHistory.css
+/usr/share/webkit/inspector/RevisionHistoryView.js=RevisionHistoryView.js
+/usr/share/webkit/inspector/RuntimeModel.js=RuntimeModel.js
+/usr/share/webkit/inspector/SASSSourceMapping.js=SASSSourceMapping.js
+/usr/share/webkit/inspector/ScopeChainSidebarPane.js=ScopeChainSidebarPane.js
+/usr/share/webkit/inspector/Script.js=Script.js
+/usr/share/webkit/inspector/ScriptFormatter.js=ScriptFormatter.js
+/usr/share/webkit/inspector/ScriptFormatterWorker.js=ScriptFormatterWorker.js
+/usr/share/webkit/inspector/ScriptsNavigator.js=ScriptsNavigator.js
+/usr/share/webkit/inspector/ScriptSnippetModel.js=ScriptSnippetModel.js
+/usr/share/webkit/inspector/scriptsPanel.css=scriptsPanel.css
+/usr/share/webkit/inspector/ScriptsPanel.js=ScriptsPanel.js
+/usr/share/webkit/inspector/ScriptsPanelDescriptor.js=ScriptsPanelDescriptor.js
+/usr/share/webkit/inspector/ScriptsSearchScope.js=ScriptsSearchScope.js
+/usr/share/webkit/inspector/SearchController.js=SearchController.js
+/usr/share/webkit/inspector/Section.js=Section.js
+/usr/share/webkit/inspector/Settings.js=Settings.js
+/usr/share/webkit/inspector/SettingsScreen.js=SettingsScreen.js
+/usr/share/webkit/inspector/ShortcutsScreen.js=ShortcutsScreen.js
+/usr/share/webkit/inspector/ShowMoreDataGridNode.js=ShowMoreDataGridNode.js
+/usr/share/webkit/inspector/SidebarOverlay.js=SidebarOverlay.js
+/usr/share/webkit/inspector/SidebarPane.js=SidebarPane.js
+/usr/share/webkit/inspector/SidebarTreeElement.js=SidebarTreeElement.js
+/usr/share/webkit/inspector/SnippetJavaScriptSourceFrame.js=SnippetJavaScriptSourceFrame.js
+/usr/share/webkit/inspector/SnippetStorage.js=SnippetStorage.js
+/usr/share/webkit/inspector/SoftContextMenu.js=SoftContextMenu.js
+/usr/share/webkit/inspector/SourceCSSTokenizer.js=SourceCSSTokenizer.js
+/usr/share/webkit/inspector/SourceFrame.js=SourceFrame.js
+/usr/share/webkit/inspector/SourceHTMLTokenizer.js=SourceHTMLTokenizer.js
+/usr/share/webkit/inspector/SourceJavaScriptTokenizer.js=SourceJavaScriptTokenizer.js
+/usr/share/webkit/inspector/SourceMapping.js=SourceMapping.js
+/usr/share/webkit/inspector/SourceTokenizer.js=SourceTokenizer.js
+/usr/share/webkit/inspector/Spectrum.js=Spectrum.js
+/usr/share/webkit/inspector/splitView.css=splitView.css
+/usr/share/webkit/inspector/SplitView.js=SplitView.js
+/usr/share/webkit/inspector/StatusBarButton.js=StatusBarButton.js
+/usr/share/webkit/inspector/StyleSheetOutlineDialog.js=StyleSheetOutlineDialog.js
+/usr/share/webkit/inspector/StyleSource.js=StyleSource.js
+/usr/share/webkit/inspector/StylesSidebarPane.js=StylesSidebarPane.js
+/usr/share/webkit/inspector/StylesSourceMapping.js=StylesSourceMapping.js
+/usr/share/webkit/inspector/TabbedEditorContainer.js=TabbedEditorContainer.js
+/usr/share/webkit/inspector/tabbedPane.css=tabbedPane.css
+/usr/share/webkit/inspector/TabbedPane.js=TabbedPane.js
+/usr/share/webkit/inspector/TestController.js=TestController.js
+/usr/share/webkit/inspector/textEditor.css=textEditor.css
+/usr/share/webkit/inspector/TextEditor.js=TextEditor.js
+/usr/share/webkit/inspector/TextEditorHighlighter.js=TextEditorHighlighter.js
+/usr/share/webkit/inspector/TextEditorModel.js=TextEditorModel.js
+/usr/share/webkit/inspector/textPrompt.css=textPrompt.css
+/usr/share/webkit/inspector/TextPrompt.js=TextPrompt.js
+/usr/share/webkit/inspector/TimelineFrameController.js=TimelineFrameController.js
+/usr/share/webkit/inspector/TimelineGrid.js=TimelineGrid.js
+/usr/share/webkit/inspector/TimelineManager.js=TimelineManager.js
+/usr/share/webkit/inspector/TimelineModel.js=TimelineModel.js
+/usr/share/webkit/inspector/TimelineOverviewPane.js=TimelineOverviewPane.js
+/usr/share/webkit/inspector/timelinePanel.css=timelinePanel.css
+/usr/share/webkit/inspector/TimelinePanel.js=TimelinePanel.js
+/usr/share/webkit/inspector/TimelinePresentationModel.js=TimelinePresentationModel.js
+/usr/share/webkit/inspector/Toolbar.js=Toolbar.js
+/usr/share/webkit/inspector/TopDownProfileDataGridTree.js=TopDownProfileDataGridTree.js
+/usr/share/webkit/inspector/treeoutline.js=treeoutline.js
+/usr/share/webkit/inspector/UISourceCode.js=UISourceCode.js
+/usr/share/webkit/inspector/UISourceCodeFrame.js=UISourceCodeFrame.js
+/usr/share/webkit/inspector/UIString.js=UIString.js
+/usr/share/webkit/inspector/UIUtils.js=UIUtils.js
+/usr/share/webkit/inspector/UserAgentSupport.js=UserAgentSupport.js
+/usr/share/webkit/inspector/UserMetrics.js=UserMetrics.js
+/usr/share/webkit/inspector/utilities.js=utilities.js
+/usr/share/webkit/inspector/View.js=View.js
+/usr/share/webkit/inspector/WatchExpressionsSidebarPane.js=WatchExpressionsSidebarPane.js
+/usr/share/webkit/inspector/webGLProfiler.css=webGLProfiler.css
+/usr/share/webkit/inspector/WebGLProfileView.js=WebGLProfileView.js
+/usr/share/webkit/inspector/WorkerManager.js=WorkerManager.js
+/usr/share/webkit/inspector/WorkersSidebarPane.js=WorkersSidebarPane.js
+/usr/share/webkit/inspector/Workspace.js=Workspace.js
+
+[search=${QNX_TARGET}/usr/share/webkit/resources]
+/usr/share/webkit/resources/exit_fullscreen.png=exit_fullscreen.png
+/usr/share/webkit/resources/fullscreen.png=fullscreen.png
+/usr/share/webkit/resources/missingImage.png=missingImage.png
+/usr/share/webkit/resources/pause.png=pause.png
+/usr/share/webkit/resources/play.png=play.png
+/usr/share/webkit/resources/searchCancel.png=searchCancel.png
+/usr/share/webkit/resources/speaker.png=speaker.png
+/usr/share/webkit/resources/speaker_mute.png=speaker_mute.png
+/usr/share/webkit/resources/vidbuffer.png=vidbuffer.png
+/usr/share/webkit/resources/volume_thumb.png=volume_thumb.png
+
+[search=${QNX_TARGET}/usr/share/webplatform/ui-resources/styles]
+/usr/share/webplatform/ui-resources/styles/styles.css=styles.css
+
+[search=${QNX_TARGET}/usr/share/webplatform/ui-resources/]
+/usr/share/webplatform/ui-resources/index.js=index.js
+
+[search=${QNX_TARGET}/usr/share/webplatform/]
+/usr/share/webplatform/i18n.js=i18n.js
+/usr/share/webplatform/jnext.js=jnext.js
+/usr/share/webplatform/screen.js=screen.js
+/usr/share/webplatform/webplatform.js=webplatform.js
+/usr/share/webplatform/pps.js=pps.js
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+###########################################################################
+## authman and certmrg
+###########################################################################
+/usr/sbin/certmgr_pps=certmgr_pps
+/lib/libcertmgr_client.so.1 =libcertmgr_client.so.1 
+/usr/lib/libcertmgr_client.so.1=libcertmgr_client.so.1
+
+/sbin/authman=authman
+/lib/libtp.so.1=libtp.so.1
+#directory
+[search=${QNX_TARGET}/armle-v7/sbin]
+/etc/authman=authman
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+##-------------------------------------------------------------------------
+## 				Network
+##-------------------------------------------------------------------------
+/usr/sbin/net_pps=net_pps
+/sbin/ifconfig=ifconfig
+/usr/sbin/dhclient=dhclient
+/usr/sbin/scp=scp
+
+ssh
+[type=link] /usr/bin/ssh=/proc/boot/ssh
+sshd
+ssh-agent
+ssh-keygen
+ssh-keyscan
+libcrypto.so.2
+
+[search=${QNX_TARGET}/armle-v7/usr/libexec]
+/usr/libexec/sftp-server=sftp-server
+/usr/libexec/ssh-keysign=ssh-keysign
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+
+[search=${QNX_TARGET}/etc] 
+/var/etc/dhclient-dhcpv6.conf=dhclient-dhcpv6.conf
+/etc/services=services
+
+[search=${QNX_TARGET}/usr/sbin]
+[perms=0755]/usr/sbin/dhclient-script=dhclient-script
+
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+##-------------------------------------------------------------------------
+## 			OS related & Other
+##-------------------------------------------------------------------------
+#libslog2.so.1
+#slogger2
+
+libsqlite3.so.1
+libz.so.2
+libstrm.so.1
+libppscache.so.1
+libaoi.so.1
+libcpp-ne.so.4
+libicui18n.so.49
+libicuuc.so.49
+libicudata.so.49
+
+/usr/lib/libaoi.so.1=libaoi.so.1
+/usr/lib/libcurl.so.2=libcurl.so.2
+/usr/lib/libcares.so.1=libcares.so.1
+/usr/lib/libssl.so.2==libssl.so.2
+/usr/lib/libgssapi.so.1=libgssapi.so.1
+/usr/lib/libnbutil.so.1=libnbutil.so.1
+/usr/lib/libkrb5.so.1=libkrb5.so.1
+/usr/lib/libheimntlm.so.1=libheimntlm.so.1
+/usr/lib/libasn1.so.1=libasn1.so.1
+/usr/lib/libcom_err.so.1=libcom_err.so.1
+/usr/lib/libhx509.so.1=libhx509.so.1
+/usr/lib/libroken.so.1=libroken.so.1
+/usr/lib/libwind.so.1=libwind.so.1
+/usr/lib/libheimbase.so.1=libheimbase.so.1
+/lib/libimg.so.1=libimg.so.1
+/usr/lib/libaoi.so.1=libaoi.so.1
+/usr/lib/libdbnotify.so.1=libdbnotify.so.1
+/usr/lib/libiptcdata.so.1=libiptcdata.so.1
+/usr/lib/liblogging.so.1=liblogging.so.1
+/usr/lib/libppscache.so.1=libppscache.so.1
+/usr/lib/libstrm.so.1=libstrm.so.1
+/usr/lib/libqdb.so.1=libqdb.so.1 
+/usr/lib/libxml2.so.1=libxml2.so.1
+/usr/lib/libiconv.so.1=libiconv.so.1
+/usr/sbin/fileset=fileset
+
+/bin/slog2info=slog2info
+/lib/libslog2parse.so.1=libslog2parse.so.1
+/usr/sbin/dumper=dumper
+/lib/libelfcore.so.1=libelfcore.so.1
+/usr/lib/libcrypto.so.2=libcrypto.so.2
+/usr/lib/libcontext.so.1=libcontext.so.1
+/usr/lib/libfreetype.so.1=libfreetype.so.1
+/usr/lib/libpng14.so.0=libpng14.so.0
+/usr/lib/libxslt.so.2=libxslt.so.2
+/usr/lib/libiType.so.1=libiType.so.1
+/usr/lib/libintl.so.1=libintl.so.1
+/usr/lib/libbz2.so.1=libbz2.so.1
+/lib/libsbgse56.so.0.0=libsbgse56.so.0.0
+[type=link] /lib/libsbgse56.so.0=libsbgse56.so.0.0
+[type=link] /lib/libsbgse56.so=libsbgse56.so.0.0
+/lib/libhuapi.so.5.6=libhuapi.so.5.6
+[type=link]/lib/libhuapi.so.5=libhuapi.so.5.6
+/lib/libclipboard.so.1=libclipboard.so.1 
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+###########################################################################
+## hid & screen
+###########################################################################
+hidview
+io-hid
+devh-microtouch.so 
+devh-touchintl.so
+devi-hid
+calib-touch
+keyboard-imf
+
+/lib/libgestures.so.1=libgestures.so.1
+/lib/libinputevents.so.1=libinputevents.so.1
+/lib/libkalman.so.1=libkalman.so.1
+/lib/libmtouch-calib.so.1=libmtouch-calib.so.1
+/lib/libmtouch-devi.so.1=libmtouch-devi.so.1
+/lib/libmtouch-fake.so.1=libmtouch-fake.so.1
+/lib/libmtouch-inject.so.1=libmtouch-inject.so.1
+
+
+/bin/tar=tar
+/bin/gzip=gzip
+
+[search=${QNX_TARGET}/usr/share]
+/usr/share/keyboard=keyboard
+
+#Restore search path
+[search=${MKIFS_PATH}]
+
+
+##-------------------------------------------------------------------------
+## Multi Media
+##-------------------------------------------------------------------------
+resarb
+/usr/sbin/mm-renderer=mm-renderer
+/usr/bin/mmrplay=mmrplay
+/lib/dll/libqdb_notify.so.1=dll/libqdb_notify.so.1
+/lib/dll/mm-cli-md.so=dll/mm-cli-md.so
+/lib/dll/mm-cli-mmplaylist.so=dll/mm-cli-mmplaylist.so
+/lib/dll/mmedia/aac_parser.so=dll/mmedia/aac_parser.so
+/lib/dll/mmedia/audio_writer.so=dll/mmedia/audio_writer.so
+/lib/dll/mmedia/avi_parser.so=dll/mmedia/avi_parser.so
+/lib/dll/mmedia/fildes_streamer.so=dll/mmedia/fildes_streamer.so
+/lib/dll/mmedia/frame_writer.so=dll/mmedia/frame_writer.so
+/lib/dll/mmedia/hls_reader.so=dll/mmedia/hls_reader.so
+/lib/dll/mmedia/http_streamer.so=dll/mmedia/http_streamer.so
+/lib/dll/mmedia/mdev_streamer.so=dll/mmedia/mdev_streamer.so
+/lib/dll/mmedia/mp2ts_parser.so=dll/mmedia/mp2ts_parser.so
+/lib/dll/mmedia/mp4_parser.so=dll/mmedia/mp4_parser.so
+/lib/dll/mmedia/mpega_parser.so=dll/mmedia/mpega_parser.so
+/lib/dll/mmedia/pcm_parser.so=dll/mmedia/pcm_parser.so
+/lib/dll/mmedia/qnx_raac_decoder.so=dll/mmedia/qnx_raac_decoder.so
+/lib/dll/mmedia/queue_filter.so=dll/mmedia/queue_filter.so
+/lib/dll/mmedia/screen_writer.so=dll/mmedia/screen_writer.so
+/lib/dll/mmedia/stream_reader.so=dll/mmedia/stream_reader.so
+/lib/dll/mmedia/wav_parser.so=dll/mmedia/wav_parser.so
+/lib/dll/mmedia/xing_mpega_decoder.so=dll/mmedia/xing_mpega_decoder.so
+/lib/dll/mmedia/audio_clock.so=dll/mmedia/audio_clock.so
+/lib/dll/mmedia/audio_meter.so=dll/mmedia/audio_meter.so
+/lib/dll/mmedia/audio_streamer.so=dll/mmedia/audio_streamer.so
+/lib/dll/mmedia/rawfile_writer.so=dll/mmedia/rawfile_writer.so
+/lib/dll/mm-mdp-cdda.so=dll/mm-mdp-cdda.so
+/lib/dll/mm-mdp-extart.so=dll/mm-mdp-extart.so
+/lib/dll/mm-mdp-mediafs.so=dll/mm-mdp-mediafs.so
+/lib/dll/mm-mdp-mmf.so=dll/mm-mdp-mmf.so
+/lib/dll/mm-plp-asx.so=dll/mm-plp-asx.so
+/lib/dll/mm-plp-b4s.so=dll/mm-plp-b4s.so
+/lib/dll/mm-plp-filelist.so=dll/mm-plp-filelist.so
+/lib/dll/mm-plp-itunes.so=dll/mm-plp-itunes.so
+/lib/dll/mm-plp-m3u.so=dll/mm-plp-m3u.so
+/lib/dll/mm-plp-pls.so=dll/mm-plp-pls.so
+/lib/dll/mm-plp-qdb.so=dll/mm-plp-qdb.so
+/lib/dll/mm-plp-rmp.so=dll/mm-plp-rmp.so
+/lib/dll/mm-plp-wpl.so=dll/mm-plp-wpl.so
+/lib/dll/mm-plp-xspf.so=dll/mm-plp-xspf.so
+/lib/dll/mmrenderer_cli.so=dll/mmrenderer_cli.so
+/lib/dll/mmr-mmf-routing.so=dll/mmr-mmf-routing.so
+/lib/dll/mmr-playlist-engine.so=dll/mmr-playlist-engine.so
+/lib/dll/mmr-track-engine.so=dll/mmr-track-engine.so
+/lib/libmmrndclient.so.1=libmmrndclient.so.1
+/usr/bin/mmcli=mmcli
+/usr/bin/mmsyncclient=mmsyncclient
+/usr/lib/libmd.so.1=libmd.so.1
+/usr/lib/libmmcharconv.so.1=libmmcharconv.so.1
+/usr/lib/libmmedia.so.1=libmmedia.so.1
+/usr/lib/libmmfilter.so.1=libmmfilter.so.1
+/usr/lib/libmmfilter.so.1=libmmfilter.so.1
+/usr/lib/libmmplaylist.so.1=libmmplaylist.so.1
+/usr/lib/libmmresarb.so.1=libmmresarb.so
+/usr/lib/libmmrndcore.so.1=libmmrndcore.so.1
+/usr/lib/libmmro-mmf.so.1=libmmro-mmf.so.1
+/usr/lib/libmmsyncclient.so.1=libmmsyncclient.so.1
+/usr/lib/libqaacd.so.1=libqaacd.so.1
+/usr/lib/libresarb.so.1=libresarb.so.1
+/usr/sbin/io-fs-media=io-fs-media
+/usr/sbin/mm-sync=mm-sync
+
+[search=${QNX_TARGET}/etc/mm/]
+/etc/mm/mm-sync.conf=mm-sync.conf
+/etc/mm/mm-renderer.conf=mm-renderer.conf
+/etc/mm/mm-playlist.conf=mm-playlist.conf
+/etc/mm/mm-charconv.conf=mm-charconv.conf
+/etc/mm/mm-md.conf=mm-md.conf
+
+#Incldue the entire sql directory
+#    The sql directory includes *.sql files like
+#    mmsync_data.sql, mmsync_views.sql, mmsync.sql
+/etc/mm/sql=sql
+ 
+#Restore search path
+[search=${MKIFS_PATH}]
+
+#=========================================================================
+# TESTING
+#=========================================================================
+screenshot
+netstat
+hogs
+[type=link] /bin/ksh=/proc/boot/ksh
+
+#Multimedia Testing
+qdbc
+#===========================================================================================
+# Screen Testing
+#
+# display_image - 	displays a specified image to the specified display.
+# egl-configs -		queries and displays the number of all the frame buffer 
+#					configurations for the specified display
+# events -			uses a window manager connection to Screen. It prints all 
+#					events to the console output as they are received.
+# font-freetype - 	shows how to render text with FreeType and OpenGL ES 1.X.
+# gles1-gears -		shows windowed gears that use OpenGL ES 1.X for the rendering API.
+# gles2-gears -		shows windowed gears that use OpenGL ES 2.X for the rendering API.
+# gles2-maze -		uses OpenGL ES 2.X for the rendering; it demonstrates how to use
+#					texture as well as vertex and fragment shaders.
+# print-gestures -	detects and displays recognized gestures
+# screenshot -		takes a screenshot of a specified size of the display and saves 
+#					the output file in BMP format. 
+# sw-vsync -		shows windowed vsync that uses software rendering.
+# vcapture-test - 	demonstrates that you can connect to a device for video input,
+#					capture frames from that input source, and then display the captured
+#					frames using Screen.
+# vkey - 			uses the privileged context, SCREEN_INPUT_PROVIDER_CONTEXT, to 
+#					create a connection to the Composition Manager. A key sequence is
+#					injected to whichever window has input focus on the specified display.
+#					The application will exit as soon as the last character is sent. 
+#===========================================================================================
+display_image 
+egl-configs
+events
+font-freetype
+gles2-maze
+print-gestures
+screenshot
+vcapture-test
+vkey
+yuv-test
+
+###########################################################################
+## 			END OF APPSMEDIA-SAMPLE BUILD SCRIPT
+###########################################################################

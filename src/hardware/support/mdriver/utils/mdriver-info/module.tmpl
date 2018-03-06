@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<module name="minidriver-info">
+	<type>Element</type>
+	<classification>Driver</classification>
+
+	<description>
+	        <short>Mini Driver Info Utility</short>
+	        <abstract>
+	                <![CDATA[The Mini Driver Info Utility.]]>
+	        </abstract>
+	</description>
+
+	<supports>
+		<availability ref="ostargets"/>
+	</supports>
+
+	<source available="false">
+		<location type="">.</location>
+	</source>
+
+	<contents>
+		<component id="info" generated="true">
+			<location basedir="{cpu}/o{-:endian}"
+				 runtime="true">mdrvr-info</location>
+		</component>
+	</contents>
+</module>

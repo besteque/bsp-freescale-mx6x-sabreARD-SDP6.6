@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<module name="devf-generic">
+	<type>Element</type>
+	<classification>Driver</classification>
+
+	<description>
+		<short>Generic flash filesystem support</short>
+		<abstract>
+			<![CDATA[The devf-generic manager provides Flash filesystem support for a large number of boards which are extremely compliant with the various methods defined in each of the major NOR flash manufacturers' specifications.]]>
+		</abstract>
+	</description>
+
+	<supports>
+		<availability ref="ostargets"/>
+<availability supported="false">
+ <cpu isa="arm"><byteOrder>be</byteOrder></cpu>
+</availability>
+	</supports>
+
+	<source available="false">
+		<location type="">.</location>
+	</source>
+	<GroupOwner>hw</GroupOwner>
+	<RuntimeComponent>Neutrino RTOS</RuntimeComponent>
+
+
+	<contents>
+		<component id="generic" generated="true">
+			<location basedir="{cpu}/{o|endian}"
+				 runtime="true">devf-generic</location>
+		</component>
+	</contents>
+
+	<requires>
+		<part build="true" location="lib/drvr"/>
+		<part rootMacro="MTDFLASH_ROOT" build="true" location="hardware/flash/mtd-flash"/>
+	</requires>
+
+</module>
