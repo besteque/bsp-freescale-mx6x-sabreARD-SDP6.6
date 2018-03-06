@@ -407,7 +407,8 @@ fat_copy_file(unsigned cluster, unsigned size, unsigned char *buf)
 			ser_putstr((char *)"\n");
 #endif
             next_c = fat_get_fat_entry(curr_c);
-            if(next_c == (curr_c+1)){
+            //if(next_c == (curr_c+1)){
+            if(next_c == (curr_c+1) && txf >20*SECTOR_SIZE){
                 txf +=cbytes;
                 curr_c = next_c;
             }else{

@@ -110,7 +110,7 @@ sdmmc_load_file (unsigned address, const char *fn)
 
 	ser_putstr("Load QNX image from SDMMC...\n");
 	//if (fat_read_mbr(&sdmmc, 0) != 0) {
-	if (fat_read_mbr(&sdmmc, 1) != 0) {
+	if (fat_read_mbr(&sdmmc, 1) != 0) {  //open dbg info
 		return SDMMC_ERROR;
 	}
 

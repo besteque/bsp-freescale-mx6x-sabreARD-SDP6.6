@@ -198,7 +198,7 @@ main(int argc, char **argv, char **envv)
 	 */
 	if ( imx6_quad_dual )
 	{
-		ram_size = MX6Q_D_DL_SDRAM_SIZE;
+		ram_size = MX6S_SDRAM_SIZE;//MX6Q_D_DL_SDRAM_SIZE;
 	} else {
 		ram_size = MX6S_SDRAM_SIZE;
 	}
@@ -214,8 +214,6 @@ main(int argc, char **argv, char **envv)
 	 * Remove RAM used by modules in the image
 	 */
 	alloc_ram(shdr->ram_paddr, shdr->ram_size, 1);
-
-
 
 	/*
 	 * Initialize SMP
@@ -264,35 +262,24 @@ main(int argc, char **argv, char **envv)
 	 */
 	mx6sdl_init_uart_1();
 
-	if ( imx6_quad_dual )
-	{
-		/* Configure PIN MUX to enable i2c */
-		mx6q_init_i2c2();
-		mx6q_init_i2c3();
+	/* Configure PIN MUX to enable i2c */
+	mx6sdl_init_i2c();
 
-		/* Init USB OTG, H1 */
-		mx6q_usb_otg_host_init();
-	}
-
-	/* dual lite */
-	else if ( imx6_dl_solo )
-	{
-		/* Configure PIN MUX to enable i2c */
-		mx6sdl_init_i2c();
-
-		/* Init USB OTG, H1 */
-		//mx6sdl_usb_otg_host_init();
-		kprintf("[xy]mx6sdl_usb_otg_host_init NOK\n");
-	}
+	/* Init USB OTG, dev mode */
+	mx6sdl_usb_otg_host_init();
+	kprintf("[xy]mx6sdl_usb_otg_host_init NOK\n");
 
 	/* Enable CPU Card peripherals such as Ethernet PHY */
 	//init_cpucard_reset_steer();
+	//kprintf("[xy]init_cpucard_reset_steer NOK\n");
 
 	/* Enable Mainboard peripherals such as ADV7180 decoder IC */
 	//init_mainboard_reset_steer();
+	//kprintf("[xy]init_mainboard_reset_steer NOK\n");
 
-	//mx6x_usb_host1_init();
-	kprintf("[xy]mx6x_usb_host1_init NOK\n");
+	/* usb host mode */
+	mx6x_usb_host1_init();
+	kprintf("[xy]mx6x_usb_host1_init OK\n");
 
 	if (init_parallel_flash) /* Parallel NOR flash */
 	{
@@ -318,7 +305,7 @@ main(int argc, char **argv, char **envv)
 	else
 	{
 		//init_video_steer();
-		kprintf("[xy]init_video_steer NOK\n");
+		//kprintf("[xy]init_video_steer NOK\n");
 	}
 
 	/* pin KEY_COL2 is being shared between CAN and ENET */
@@ -368,65 +355,36 @@ main(int argc, char **argv, char **envv)
 		kprintf("[xy]pmu_power_up_gpu ok\n");
 	}
 
-	if ( imx6_quad_dual )
-	{
-		/* init PMIC */
-		mx6q_init_pmic();
+	/* init PMIC */
+	mx6sdl_init_pmic();
+	kprintf("[xy]mx6sdl_init_pmic ok\n");
 
-		/* init UART 2 */
-		mx6q_init_uart_2();
+	/* init UART 2 */
+	//mx6sdl_init_uart_2();
 
-		/* Configure PIN MUX to enable SD */
-		mx6q_init_usdhc();
+	/* Configure PIN MUX to enable SD */
+	mx6sdl_init_usdhc();
+	kprintf("[xy]mx6sdl_init_usdhc ok\n");
 
-		/* Configure pins for LVDS, LCD display*/
-		mx6x_init_displays();
+	/* Configure pins for LVDS, LCD display*/
+	mx6x_init_displays();
 
-		/* Set GPU3D clocks */
-		mx6x_init_gpu3D();
+	/* Set GPU3D clocks */
+	mx6x_init_gpu3D();
 
-		/* Configure esai pins */
-		mx6q_init_esai();
+	/* Configure esai pins */
+	//mx6sdl_init_esai();
 
-		/* Configure spdif pins */
-		mx6q_init_spdif();
-
-		/* SATA - present only on quad and dual processors */
-		mx6x_init_sata(ANATOP_PLL8_ENET_REF_ENET_125M);
-	}
-	else if ( imx6_dl_solo )
-	{
-		/* init PMIC */
-		mx6sdl_init_pmic();
-		kprintf("[xy]mx6sdl_init_pmic ok\n");
-
-		/* init UART 2 */
-		//mx6sdl_init_uart_2();
-
-		/* Configure PIN MUX to enable SD */
-		mx6sdl_init_usdhc();
-		kprintf("[xy]mx6sdl_init_usdhc ok\n");
-
-		/* Configure pins for LVDS, LCD display*/
-		//mx6x_init_displays();
-
-		/* Set GPU3D clocks */
-		//mx6x_init_gpu3D();
-
-		/* Configure esai pins */
-		//mx6sdl_init_esai();
-
-		/* Configure spdif pins */
-		mx6sdl_init_spdif();
-		kprintf("[xy]mx6sdl_init_spdif ok\n");
-	}
+	/* Configure spdif pins */
+	//mx6sdl_init_spdif();
+	//kprintf("[xy]mx6sdl_init_spdif ok\n");
 
 	/*
 	 * If using an LVDS display mx6x_init_lvds_clock() should be called which will select
 	 * PLL5 as the LDB clock source.
 	 */
-	//mx6x_init_lvds_clock();
-	kprintf("[xy]mx6x_init_lvds_clock pok\n");
+	mx6x_init_lvds_clock();
+	kprintf("[xy]mx6x_init_lvds_clock ok\n");
 
 	pmu_set_standard_ldo_voltages();
 

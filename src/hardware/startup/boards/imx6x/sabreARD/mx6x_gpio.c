@@ -243,11 +243,13 @@ void mx6sdl_init_enet(void)
 	uint32_t reg;
 
 	// RGMII MDIO - transfers control info between MAC and PHY
-	pinmux_set_swmux(SWMUX_SDL_KEY_COL1, MUX_CTL_MUX_MODE_ALT1);
-	pinmux_set_input(SWINPUT_SDL_ENET_IPP_IND_MAC0_MDIO,1);
+	pinmux_set_swmux(SWMUX_SDL_ENET_MDIO, MUX_CTL_MUX_MODE_ALT1);
+	pinmux_set_padcfg(SWPAD_SDL_ENET_MDIO, MX6X_PAD_SETTINGS_ENET);
+	pinmux_set_input(SWINPUT_SDL_ENET_IPP_IND_MAC0_MDIO,0);
 
 	// RGMII MDC - output from MAC to PHY, provides clock reference for MDIO
-	pinmux_set_swmux(SWMUX_SDL_KEY_COL2, MUX_CTL_MUX_MODE_ALT4);
+	pinmux_set_swmux(SWMUX_SDL_ENET_MDC, MUX_CTL_MUX_MODE_ALT1);
+	pinmux_set_padcfg(SWPAD_SDL_ENET_MDC, MX6X_PAD_SETTINGS_ENET);
 
 	// RGMII TXC - output from MAC, provides clock used by RGMII_TXD[3:0], RGMII_TX_CTL
 	pinmux_set_swmux(SWMUX_SDL_RGMII_TXC, MUX_CTL_MUX_MODE_ALT1);
@@ -411,12 +413,13 @@ void mx6q_init_usdhc(void)
 void mx6sdl_init_usdhc(void)
 {
 	/***********
-	 * SD4
+	 * SD4 = emmc
 	 ***********/
 
 	/* SD4 CLK */
 	pinmux_set_swmux(SWMUX_SDL_SD4_CLK, MUX_CTL_MUX_MODE_ALT0);
 	pinmux_set_padcfg(SWPAD_SDL_SD4_CLK, MX6X_PAD_SETTINGS_USDHC);
+	pinmux_set_input(SWINPUT_SDL_USDHC4_IPP_CARD_CLK_IN,1); //MUST
 
 	/* SD4 CMD */
 	pinmux_set_swmux(SWMUX_SDL_SD4_CMD, MUX_CTL_MUX_MODE_ALT0 | MUX_CTL_SION);
@@ -454,16 +457,76 @@ void mx6sdl_init_usdhc(void)
 	pinmux_set_swmux(SWMUX_SDL_SD4_DAT7, MUX_CTL_MUX_MODE_ALT1);
 	pinmux_set_padcfg(SWPAD_SDL_SD4_DAT7, MX6X_PAD_SETTINGS_USDHC);
 
-#if 0
-	/* SD3 Write Protect - configure GPIO1[13] as an input */
-	pinmux_set_swmux(SWMUX_SDL_SD2_DAT2, MUX_CTL_MUX_MODE_ALT5);
-//	pinmux_set_padcfg(SWPAD_SDL_SD2_DAT2, MX6Q_PAD_SETTINGS_USDHC_WP);
-	out32(MX6X_GPIO1_BASE + MX6X_GPIO_GDIR, in32(MX6X_GPIO1_BASE + MX6X_GPIO_GDIR) & ~(1<<13));
 
-	/* SD3 Card Detect - configure GPIO6[15] as an input */
-	pinmux_set_swmux(SWMUX_SDL_NANDF_CS2, MUX_CTL_MUX_MODE_ALT5);
-	out32(MX6X_GPIO6_BASE + MX6X_GPIO_GDIR, in32(MX6X_GPIO6_BASE + MX6X_GPIO_GDIR) & ~(1<<15));
-#endif
+	/***********
+	 * SD2 = SD
+	 ***********/
+	/* SD2 CLK */
+	pinmux_set_swmux(SWMUX_SDL_SD2_CLK, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD2_CLK, MX6X_PAD_SETTINGS_USDHC);
+	pinmux_set_input(SWINPUT_SDL_USDHC2_IPP_CARD_CLK_IN,1); //MUST
+
+	/* SD2 CMD */
+	pinmux_set_swmux(SWMUX_SDL_SD2_CMD, MUX_CTL_MUX_MODE_ALT0 | MUX_CTL_SION);
+	pinmux_set_padcfg(SWPAD_SDL_SD2_CMD, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD2 DAT0 */
+	pinmux_set_swmux(SWMUX_SDL_SD2_DAT0, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD2_DAT0, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD2 DAT1 */
+	pinmux_set_swmux(SWMUX_SDL_SD2_DAT1, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD2_DAT1, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD2 DAT2 */
+	pinmux_set_swmux(SWMUX_SDL_SD2_DAT2, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD2_DAT2, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD2 DAT3 */
+	pinmux_set_swmux(SWMUX_SDL_SD2_DAT3, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD2_DAT3, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD2 Write Protect - configure GPIO2[3] as an input */
+	pinmux_set_swmux(SWMUX_SDL_NANDF_D3, MUX_CTL_MUX_MODE_ALT5);
+//	pinmux_set_padcfg(SWPAD_SDL_SD2_DAT2, MX6Q_PAD_SETTINGS_USDHC_WP);
+	out32(MX6X_GPIO2_BASE + MX6X_GPIO_GDIR, in32(MX6X_GPIO2_BASE + MX6X_GPIO_GDIR) & ~(1<<3));
+
+	/* SD2 Card Detect - configure GPIO2[2] as an input */
+	pinmux_set_swmux(SWMUX_SDL_NANDF_D2, MUX_CTL_MUX_MODE_ALT5);
+	out32(MX6X_GPIO2_BASE + MX6X_GPIO_GDIR, in32(MX6X_GPIO2_BASE + MX6X_GPIO_GDIR) & ~(1<<2));
+
+	/***********
+	 * SD3 = TF
+	 ***********/
+
+	/* SD3 CLK */
+	pinmux_set_swmux(SWMUX_SDL_SD3_CLK, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD3_CLK, MX6X_PAD_SETTINGS_USDHC);
+	pinmux_set_input(SWINPUT_SDL_USDHC3_IPP_CARD_CLK_IN,1); //MUST
+
+	/* SD3 CMD */
+	pinmux_set_swmux(SWMUX_SDL_SD3_CMD, MUX_CTL_MUX_MODE_ALT0 | MUX_CTL_SION);
+	pinmux_set_padcfg(SWPAD_SDL_SD3_CMD, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD3 DAT0 */
+	pinmux_set_swmux(SWMUX_SDL_SD3_DAT0, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD3_DAT0, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD3 DAT1 */
+	pinmux_set_swmux(SWMUX_SDL_SD3_DAT1, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD3_DAT1, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD3 DAT2 */
+	pinmux_set_swmux(SWMUX_SDL_SD3_DAT2, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD3_DAT2, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD3 DAT3 */
+	pinmux_set_swmux(SWMUX_SDL_SD3_DAT3, MUX_CTL_MUX_MODE_ALT0);
+	pinmux_set_padcfg(SWPAD_SDL_SD3_DAT3, MX6X_PAD_SETTINGS_USDHC);
+
+	/* SD3 Card Detect - configure GPIO2[0] as an input */
+	pinmux_set_swmux(SWMUX_SDL_NANDF_D0, MUX_CTL_MUX_MODE_ALT5);
+	out32(MX6X_GPIO2_BASE + MX6X_GPIO_GDIR, in32(MX6X_GPIO2_BASE + MX6X_GPIO_GDIR) & ~(1<<0));
 
 }
 
@@ -496,23 +559,23 @@ void mx6q_init_ecspi(void)
 void mx6sdl_init_ecspi(void)
 {
 	/* SPI SCLK */
-	pinmux_set_swmux(SWMUX_SDL_EIM_D16, MUX_CTL_MUX_MODE_ALT1);
-	pinmux_set_padcfg(SWPAD_SDL_EIM_D16, MX6X_PAD_SETTINGS_ECSPI);
+	pinmux_set_swmux(SWMUX_SDL_EIM_CS0, MUX_CTL_MUX_MODE_ALT2);
+	pinmux_set_padcfg(SWPAD_SDL_EIM_CS0, MX6X_PAD_SETTINGS_ECSPI);
 	pinmux_set_input(SWINPUT_SDL_ECSPI1_IPP_CSPI_CLK, 0x2); // Solo change
 
 	/* SPI MISO */
-	pinmux_set_swmux(SWMUX_SDL_EIM_D17, MUX_CTL_MUX_MODE_ALT1);
-	pinmux_set_padcfg(SWPAD_SDL_EIM_D17, MX6X_PAD_SETTINGS_ECSPI);
+	pinmux_set_swmux(SWMUX_SDL_EIM_OE, MUX_CTL_MUX_MODE_ALT2);
+	pinmux_set_padcfg(SWPAD_SDL_EIM_OE, MX6X_PAD_SETTINGS_ECSPI);
 	pinmux_set_input(SWINPUT_SDL_ECSPI1_IPP_IND_MISO, 0x2); // Solo change
 
 	/* SPI MOSI */
-	pinmux_set_swmux(SWMUX_SDL_EIM_D18, MUX_CTL_MUX_MODE_ALT1);
-	pinmux_set_padcfg(SWPAD_SDL_EIM_D18, MX6X_PAD_SETTINGS_ECSPI);
+	pinmux_set_swmux(SWMUX_SDL_EIM_CS1, MUX_CTL_MUX_MODE_ALT2);
+	pinmux_set_padcfg(SWPAD_SDL_EIM_CS1, MX6X_PAD_SETTINGS_ECSPI);
 	pinmux_set_input(SWINPUT_SDL_ECSPI1_IPP_IND_MOSI, 0x2); // Solo change
 
 	/* Select mux mode ALT1 for SS1 */
-	pinmux_set_swmux(SWMUX_SDL_EIM_D19, MUX_CTL_MUX_MODE_ALT1);
-	pinmux_set_padcfg(SWPAD_SDL_EIM_D19, MX6X_PAD_SETTINGS_ECSPI);
+	pinmux_set_swmux(SWMUX_SDL_EIM_LBA, MUX_CTL_MUX_MODE_ALT2);
+	pinmux_set_padcfg(SWPAD_SDL_EIM_LBA, MX6X_PAD_SETTINGS_ECSPI);
 	pinmux_set_input(SWINPUT_SDL_ECSPI1_IPP_IND_SS_B_1, 0x1); // Solo change
 
 	/* Steer EIM_D18 signal to NOR flash (disables I2C3 SDA) */
@@ -897,6 +960,12 @@ void mx6sdl_init_lcd_panel(void)
 	pinmux_set_swmux(SWMUX_SDL_DISP0_DAT20, MUX_CTL_MUX_MODE_ALT0);
 	/* D9 Blue user LED control */
 	pinmux_set_swmux(SWMUX_SDL_DISP0_DAT21, MUX_CTL_MUX_MODE_ALT0);
+
+
+	// LVDS_PWREN-gpio6[15]
+	pinmux_set_swmux(SWMUX_SDL_NANDF_CS2, MUX_CTL_MUX_MODE_ALT5);
+	out32(MX6X_GPIO6_BASE + MX6X_GPIO_GDIR, in32(MX6X_GPIO6_BASE + MX6X_GPIO_GDIR) | (1<<15));
+	out32(MX6X_GPIO6_BASE + MX6X_GPIO_DR, in32(MX6X_GPIO6_BASE + MX6X_GPIO_DR) | (0x1 << 15));
 }
 
 void mx6q_init_can(void)
@@ -1055,11 +1124,11 @@ void mx6x_init_displays(void)
 	}
 	else if (get_mx6_chip_type() == MX6_CHIP_TYPE_DUAL_LITE_OR_SOLO)
 	{
-		mx6sdl_init_lvds0();
-		mx6sdl_init_lvds1();
-		mx6sdl_init_hdmi();
+		//mx6sdl_init_lvds0();
+		//mx6sdl_init_lvds1();
+		//mx6sdl_init_hdmi();
 		mx6sdl_init_lcd_panel();
-		mx6sdl_init_video();
+		//mx6sdl_init_video();
 	}
 }
 

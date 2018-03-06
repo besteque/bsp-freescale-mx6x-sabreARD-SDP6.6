@@ -62,8 +62,12 @@
 }
 [+script] .script = {
 # Initialise the console
-    procmgr_symlink ../../proc/boot/libc.so.3 /usr/lib/ldqnx.so.2
-    
+    procmgr_symlink ../../proc/boot/libc.so.3 /usr/lib/ldqnx.so.2    
+ 
+    slogger &
+
+    # Start some common servers
+    pipe &
     
     display_msg "[dbg]init serial begin "
     devc-sermx1 -e -F -S -c80000000 0x02020000,58
@@ -82,10 +86,6 @@
     display_msg
     display_msg Welcome to QNX Neutrino 6.6.0 on the Freescale i.mx6 DualLite Sabre-ARD RevB (ARM Cortex-A9 MPCore)
     display_msg
-    slogger &
-
-    # Start some common servers
-    pipe &
 
     #######################################################################
     ## WatchDog utility

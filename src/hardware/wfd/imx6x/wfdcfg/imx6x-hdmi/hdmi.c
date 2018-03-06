@@ -74,6 +74,11 @@ get_ext_from_list(const struct wfdcfg_keyval *ext_list, const char *key)
 	return NULL;
 }
 
+static const struct wfdcfg_keyval mode_ext[] = {
+		{ .key = TIMING_LDB_OPTIONS , .i = TIMING_LDB_DATA_MAPPING_SPWG} ,
+		{NULL}  // marks end of list
+};
+
 
 static const struct wfdcfg_keyval device_ext[] = {
 	{ NULL }  // marks end of list
@@ -90,6 +95,17 @@ static const struct wfdcfg_keyval port_ext[] = {
 	.flags = (f), } \
 
 static const struct mode modes[] = {
+
+#if 0
+		/* 1920x720 @ 60Hz 97.34MHz +HSync +VSync
+			h: width  1920 start 1980 end 2000 total 2080 skew    0
+			v: height  720 start  722 end  723 total  780           */
+		{
+			.timing = MODELINE(97.34, 1920, 1980, 2000, 2080, 720, 722, 723, 780, 0),
+		},
+
+#else
+
 	/* A combination of the 800x600 and 640x480 modelines */
 	{
 		.timing = MODELINE(40.0, 800, 840, 968, 1056, 480, 481, 484, 500, 0),
@@ -191,6 +207,7 @@ static const struct mode modes[] = {
 	// 1280x800 @ 50Hz  -Hsync -Vsync
 	{
 		.timing = MODELINE(68.00, 1280, 1336, 1464, 1648, 800, 803, 809, 826, WFDCFG_INVERT_VSYNC | WFDCFG_INVERT_HSYNC),
+		.ext = mode_ext,
 	},
 
 	// 1280x480 @ 60 Hz  -Hsync -Vsync
@@ -250,6 +267,7 @@ static const struct mode modes[] = {
 		// marks end of list
 		.timing = {.pixel_clock_kHz = 0},
 	},
+#endif
 };
 
 

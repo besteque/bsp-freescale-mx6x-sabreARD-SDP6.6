@@ -26,7 +26,7 @@
 #include "startup.h"
 
 unsigned					paddr_bits = 32;
-int							debug_flag = 1;
+int							debug_flag = 0;
 unsigned					reserved_size;
 unsigned					reserved_align;
 unsigned long				cpu_freq;

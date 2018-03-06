@@ -89,7 +89,7 @@ void mx6sdl_usb_otg_host_init(void)
 {
 
 	/* Turning on the USB_OTG_VBUS */
-	init_otg_vbus();
+	//init_otg_vbus();
 
 	/* ID pin muxing */
 	/* USB OTG_ID Input */
@@ -98,10 +98,10 @@ void mx6sdl_usb_otg_host_init(void)
 	pinmux_set_input(SWINPUT_SDL_ANATOP_USB_OTG_ID, 0x0);
 
 	/* setup GPIO2[8] as USB_CLK_EN_B line */
-	pinmux_set_swmux(SWMUX_SDL_SD4_DAT0, MUX_CTL_MUX_MODE_ALT5);
+	//pinmux_set_swmux(SWMUX_SDL_SD4_DAT0, MUX_CTL_MUX_MODE_ALT5);
 
 	/* USB OTG select ENET_RX_ER */
-	out32(MX6X_IOMUXC_BASE + MX6X_IOMUX_GPR1, in32(MX6X_IOMUXC_BASE + MX6X_IOMUX_GPR1) & ~(1 << 13));
+	out32(MX6X_IOMUXC_BASE + MX6X_IOMUX_GPR1, in32(MX6X_IOMUXC_BASE + MX6X_IOMUX_GPR1) & ~(1 << 24));
 
 	/* Initialize OTG core */
 	mx6x_init_usb_otg();
@@ -113,8 +113,8 @@ void mx6sdl_usb_otg_host_init(void)
 void mx6x_usb_host1_init(void)
 {
 	/*USB HOST1 on base board */
-	/* USB_HOST1_OC_B*/
-//	pinmux_set_swmux(SWMUX_EIM_WAIT, MUX_CTL_MUX_MODE_ALT5);
+	/* USB_HOST1_OC_B*/ //errata: RESET pin
+	pinmux_set_swmux(SWMUX_KEY_ROW1, MUX_CTL_MUX_MODE_ALT0);
 
 	mx6x_init_usb_host1();
 

@@ -28,8 +28,8 @@
 #     dev-can-mx6x can0
 ####################################################################################
 [image=0x10800000]
-#[virtual=armle-v7,raw +compress] .bootstrap = {
-[virtual=armle-v7,raw] .bootstrap = {
+[virtual=armle-v7,raw +compress] .bootstrap = {
+#[virtual=armle-v7,raw] .bootstrap = {
     #
     # Options specific to this BSP:
     #
@@ -56,14 +56,40 @@
     #startup-imx6x-sabreARD -n0 -m -r 0x80000000,256M
     # Otherwise use the following version of startup to access the full range of
     # RAM
-    startup-imx6x-sabreARD -n0 -m
+    startup-imx6x-sabreARD -n2 -m -W
 
     PATH=:/proc/boot:/bin:/sbin:/usr/bin:/usr/sbin LD_LIBRARY_PATH=:/proc/boot:/lib:/usr/lib:/lib/dll procnto-smp-instr
 }
 [+script] .script = {
-# Initialise the console
+    # Initialise the console
     procmgr_symlink ../../proc/boot/libc.so.3 /usr/lib/ldqnx.so.2
-    devc-sermx1 -e -F -S -c80000000 0x021F0000,61
+
+    display_msg Welcome to QNX Neutrino 6.6.0 on the Freescale i.mx6 DualLite Sabre-ARD RevB (ARM Cortex-A9 MPCore)
+
+    # Start some common servers
+    pipe &
+    slogger
+
+    #######################################################################
+    ## WatchDog utility
+    ## If startup is given '-W' parameter then the 'wdtkick' utility MUST
+    ## be uncommented below.
+    #######################################################################
+    display_msg Starting watchdog...
+    wdtkick
+    
+    
+    display_msg Starting serial server...
+    devc-sermx1 -e -F -S -c80000000 0x02020000,58
+    waitfor /dev/ser1 4
+    reopen /dev/ser1
+
+    #######################################################################
+    ## Random service
+    #######################################################################
+    display_msg "Starting random service ..."
+    random -t
+    waitfor /dev/random 5
 
     #######################################################################
     ## For mini-can test
@@ -71,17 +97,6 @@
     #dev-can-mx6x -n 500 can0
     #waitfor /dev/can0/rx0 4
     #ksh -c "cat /dev/can0/rx0 > /dev/shmem/mdat.txt &"
-
-
-
-    reopen
-    display_msg
-    display_msg Welcome to QNX Neutrino 6.6.0 on the Freescale i.mx6 Quad/Dual/DualLite/Solo/QuadPlus Sabre-ARD RevB (ARM Cortex-A9 MPCore)
-    display_msg
-    slogger &
-
-    # Start some common servers
-    pipe &
 
     #######################################################################
     ## WatchDog utility
@@ -95,17 +110,40 @@
     ## I2C driver
     #######################################################################
     display_msg Starting I2C1,2,3 driver (/dev/i2c1,2,3)...
+    i2c-imx -p 0x021A0000 -i68 -c66000000 --u 1
     i2c-imx -p 0x021A4000 -i69 -c66000000 --u 2
     i2c-imx -p 0x021A8000 -i70 -c66000000 --u 3
 
     #######################################################################
-    ## SD memory card driver
+    ## emmc driver
     #######################################################################
-    display_msg Starting SD3 memory card driver...
-    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x02198000,irq=56,bs=cd=0x020b0000^15^335:wp=0x0209c000^13^173 disk name=sd3
+    display_msg Starting emmc driver...
+    # requires libcam.so io-blk.so   cam-disk.so
+    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x0219C000,irq=57 disk name=emmc
+	waitfor /dev/emmc0t12 3    #dev name regulor:dev0,type,typeno
+	mount -t dos /dev/emmc0t12 /emmc
 
-    display_msg Starting SD1 (microSD connector) memory card driver on the base board...
-    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x02190000,irq=54,bs=cd=0x0209c000^1^161:wp=0x020ac000^20^309 disk name=sd1
+	# delete ext2 partition that created by mfgtools, buit as qnx6 partiton
+	display_msg Starting mount data partition
+	./scripts/format.sh
+
+	##################################################
+	## USB OTG -host            hd0
+	##################################################
+	io-usb -dehci-mx28 ioport=0x02184300,irq=72,phy=0x020ca000,verbose=5
+	waitfor /dev/io-usb/io-usb 4
+    waitfor /dev/io-usb/devu-ehci-mx28.so 4
+	
+	devb-umass cam pnp &
+
+    #######################################################################
+    ## SD/TF memory card driver                 cd/cd_pin=GPIOx_y, equivalent to GPIOx^y
+    #######################################################################
+    display_msg Starting tfcard memory card driver...
+    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x02198000,irq=56,bs=cd_base=0x020a0000:cd_pin=0 disk name=tfcard
+
+    display_msg Starting SD memory card driver on the base board...
+    devb-sdmmc-mx6_generic cam pnp,verbose blk rw,cache=2M sdio addr=0x02194000,irq=55,bs=cd=0x020A0000^2:wp=0x020ac000^3 disk name=sdcard
 
     #######################################################################
     ## SST 25VF016B SPI Flash Chip
@@ -132,15 +170,15 @@
     #######################################################################
     ## AUDIO driver
     #######################################################################
-    display_msg Starting ESAI audio driver...
-    io-audio -d mxesai-mx6sabreARD
-    waitfor /dev/snd 4
+    #display_msg Starting ESAI audio driver...
+    #io-audio -d mxesai-mx6sabreARD
+    #waitfor /dev/snd 4
 
     #######################################################################
     ## SATA driver
     #######################################################################
-    display_msg Starting SATA driver (Quad and Dual processors only)...
-    devb-ahci ahci ioport=0x02200000,irq=71
+    #display_msg Starting SATA driver (Quad and Dual processors only)...
+    #devb-ahci ahci ioport=0x02200000,irq=71
 
     #######################################################################
     ## ECSPI driver
@@ -159,8 +197,8 @@
     # Starting Enhanced SPI driver ECSPI1 (/dev/spi1)
     # spi-master -u1 -d mx51ecspi base=0x02008000,irq=63,loopback=1
 
-    # Starting Enhanced SPI driver ECSPI2 (/dev/spi2)
-    # spi-master -u2 -d mx51ecspi base=0x0200C000,irq=64,loopback=1
+    display_msg Starting Enhanced SPI driver ECSPI2 (/dev/spi2)
+    spi-master -u2 -d mx51ecspi base=0x0200C000,irq=64,loopback=1
 
     # Starting Enhanced SPI driver ECSPI3 (/dev/spi3)
     # spi-master -u3 -d mx51ecspi base=0x02010000,irq=65,loopback=1
@@ -171,26 +209,19 @@
     # Starting Enhanced SPI driver ECSPI5 (/dev/spi5)
     # spi-master -u5 -d mx51ecspi base=0x02018000,irq=67,loopback=1
 
-
-    #######################################################################
-    ## USB OTG controllers
-    #######################################################################
-    display_msg Starting USB OTG driver
-    io-usb -dehci-mx28 ioport=0x02184100,irq=75,phy=0x020c9000,verbose=5 -dehci-mx28 ioport=0x02184300,irq=72,phy=0x020ca000,verbose=5
-    waitfor /dev/io-usb/io-usb 4
-    waitfor /dev/io-usb/devu-ehci-mx28.so 4
-
-    display_msg Launching devb-umass...
-    devb-umass cam pnp &
-
     #######################################################################
     ## Networking
     #######################################################################
-    display_msg Starting Ethernet driver
-    io-pkt-v4 -dmx6x speed=100,duplex=1
+    #display_msg Starting Ethernet driver
+    #io-pkt-v4 -dmx6x speed=100,duplex=1
 
-    waitfor /dev/socket
+    #waitfor /dev/socket
     #dhcp.client &
+    display_msg Starting Networking
+    io-pkt-v6-hc -dmx6x #verbose=10
+    if_up -p fec0
+    ifconfig fec0 129.0.0.22 netmask 255.255.0.0 up
+    ifconfig fec0 media 100baseTX 
 
     #######################################################################
     ## Parallel NOR Flash
@@ -214,9 +245,20 @@
     ##    for more information on remote debugging
     ##  - the commands shown require that NETWORK is enabled too
     #######################################################################
-
+    devc-pty
+    waitfor /dev/ptyp0 4
+    waitfor /dev/socket 4
+    PATH=$PATH:/usr/bin qconn port=8000
+    inetd &
 
     [+session] sh /proc/boot/.console.sh &
+    
+    #######################################################################
+    ## Screen
+    #######################################################################
+    #display_msg Starting Screen
+    #/sbin/screen -c /usr/lib/graphics/iMX6X/graphics.conf
+    
 }
 
 # Redirect console messages
@@ -226,9 +268,18 @@
 
 # Programs require the runtime linker (ldqnx.so) to be at a fixed location
 
+#############
+##  Ham
+#############
+libham.so
+libham.so.2
+
 # Shared libraries
 libc.so
 libm.so.2
+
+libz.so.2
+libstdc++.so.6
 
 ###########################################################################
 ## C++ lib required for GPU
@@ -272,6 +323,10 @@ devnp-asix.so
 ###########################################################################
 spi-mx51ecspi.so
 
+libportman.so.1
+libsbus_2.0.so.1
+libsil_core.so.1
+
 ###########################################################################
 ## AUDIO
 ###########################################################################
@@ -310,30 +365,43 @@ libtracelog.so.1
 ###########################################################################
 ## Graphics support - screen
 ###########################################################################
-#libWFD.so.1
-#libinputevents.so.1
-#libkalman.so.1
-#libGAL-gc320v0.so.1
-#screen-gc320v0.so
-#/usr/lib/graphics/iMX6X/libWFDimx6x.so=graphics/iMX6X/libWFDimx6x.so
-#/usr/lib/graphics/iMX6X/libGalcore-3dvg.so=graphics/iMX6X/libGalcore-3dvg.so
-#/usr/lib/graphics/iMX6X/libimx6xCSCgamma-generic.so=graphics/iMX6X/libimx6xCSCgamma-generic.so
+libWFD.so.1
+libinputevents.so.1
+libkalman.so.1
+libGAL-gc320v0.so.1
+screen-gc320v0.so
+/usr/lib/graphics/iMX6X/libWFDimx6x.so=graphics/iMX6X/libWFDimx6x.so
+/usr/lib/graphics/iMX6X/libGalcore-3dvg.so=graphics/iMX6X/libGalcore-3dvg.so
+/usr/lib/graphics/iMX6X/libimx6xCSCgamma-generic.so=graphics/iMX6X/libimx6xCSCgamma-generic.so
 
-#[search=../install/armle-v7/usr/lib/graphics/iMX6X] /usr/lib/graphics/iMX6X/libwfdcfg-imx6x-hdmi.so=libwfdcfg-imx6x-hdmi.so
-#[search=../install/armle-v7/usr/lib/graphics/iMX6X] /usr/lib/graphics/iMX6X/graphics.conf=graphics.conf
+[search=../install/armle-v7/usr/lib/graphics/iMX6X] /usr/lib/graphics/iMX6X/libwfdcfg-imx6x-hdmi.so=libwfdcfg-imx6x-hdmi.so
+[search=../install/armle-v7/usr/lib/graphics/iMX6X] /usr/lib/graphics/iMX6X/graphics.conf=graphics.conf
+
+
+libGLESv1_CL.so.1
+libgestures.so.1
+#libmemobj.so.1
+#libscrmem.so.1
+#screen-debug.so
+
+# if using img codec, the cfg file should be uncommented
+/etc/system/config/img.conf=${QNX_TARGET}/etc/system/config/img.conf
+# /etc/system/config/img.conf=../prebuilt/etc/system/config/img.conf
+
 
 ###########################################################################
 ## Graphics support - apps
 ###########################################################################
-#libEGL.so.1
-#libscreen.so.1
-#/usr/lib/graphics/iMX6X/libGLESv1_CM.so.1=libGLESv1_CM.so.1
-#/usr/lib/graphics/iMX6X/libGLESv2.so.1=libGLESv2.so.1
-#/usr/lib/graphics/iMX6X/libEGL_viv.so=graphics/iMX6X/libEGL_viv.so
-#/usr/lib/graphics/iMX6X/libGLES_CM_viv.so=graphics/iMX6X/libGLES_CM_viv.so
-#/usr/lib/graphics/iMX6X/libGLESv2_viv.so=graphics/iMX6X/libGLESv2_viv.so
-#/usr/lib/graphics/iMX6X/libGLSLC.so=graphics/iMX6X/libGLSLC.so
+libEGL.so.1
+libscreen.so.1
+/usr/lib/graphics/iMX6X/libGLESv1_CM.so.1=libGLESv1_CM.so.1
+/usr/lib/graphics/iMX6X/libGLESv2.so.1=libGLESv2.so.1
+/usr/lib/graphics/iMX6X/libEGL_viv.so=graphics/iMX6X/libEGL_viv.so
+/usr/lib/graphics/iMX6X/libGLES_CM_viv.so=graphics/iMX6X/libGLES_CM_viv.so
+/usr/lib/graphics/iMX6X/libGLESv2_viv.so=graphics/iMX6X/libGLESv2_viv.so
+/usr/lib/graphics/iMX6X/libGLSLC.so=graphics/iMX6X/libGLSLC.so
 
+/usr/lib/graphics/iMX6X/libOpenVG_viv.so=graphics/iMX6X/libOpenVG_viv.so
 
 # Executables
 [data=c]
@@ -342,15 +410,16 @@ devc-sermx1
 ###########################################################################
 ## Screen executables
 ###########################################################################
-#/sbin/screen=screen
-#/usr/bin/gles1-gears=gles1-gears
-#/usr/bin/gles2-gears=gles2-gears
-#/usr/bin/sw-vsync=sw-vsync
+/sbin/screen=screen
+/usr/bin/gles1-gears=gles1-gears
+/usr/bin/gles2-gears=gles2-gears
+/usr/bin/sw-vsync=sw-vsync
 
 
 ###########################################################################
 ## uncomment for NETWORK driver
 ###########################################################################
+io-pkt-v6-hc
 io-pkt-v4
 nicinfo
 ping
@@ -479,6 +548,8 @@ export PATH=:/bin:/usr/bin:/sbin:/usr/sbin:/proc/boot:/tmp
 export LD_LIBRARY_PATH=:/lib:/usr/lib:/usr/lib/graphics/iMX6X:/lib/dll:/proc/boot:/tmp
 export GRAPHICS_ROOT=/usr/lib/graphics/iMX6X
 
+/sbin/screen -c /usr/lib/graphics/iMX6X/graphics.conf
+
 #start demo if it exists
 demo=/proc/boot/.start-demo
 if [ -e "$demo" ]; then
@@ -497,6 +568,28 @@ else
 fi
 
 ksh -l
+}
+
+
+##########################################################################
+## format partition  --only occurring at the 1st time
+###########################################################################
+[perms=0755] /scripts/format.sh = {
+#!/bin/sh
+
+mount -t qnx6 /dev/emmc0t178 /data
+ret=$?  
+
+# delete ext2 partition that created by mfgtools, buit as qnx6 partiton
+if [ $ret -ne 0 ];then
+
+	fdisk /dev/emmc0 delete -s 2 
+	fdisk /dev/emmc0 add -s 2 -t 178
+	mount -e /dev/emmc0
+	waitfor /dev/emmc0t178 3
+	mkqnx6fs -q /dev/emmc0t178
+	mount -t qnx6 /dev/emmc0t178 /data
+fi
 }
 
 ###########################################################################
@@ -541,6 +634,14 @@ waitfor
 echo
 dumper
 
+ldd
+#Coin
+#Coin.kzb
+#Coin.kzb.cfg
+
+ham
+hamctrl
+
 ###########################################################################
 ## Commands required for i.MX6Q-SabreARD
 ###########################################################################
@@ -550,35 +651,42 @@ ksh
 ###########################################################################
 ## uncomment for debugging support
 ###########################################################################
-#devc-pty
-#ftpd
-#inetd
-#/bin/login = login
-#pdebug
-#qconn
-#telnetd
+devc-pty
+ftpd
+inetd
+/bin/login = login
+pdebug
+qconn
+telnetd
 
-#/etc/services = ../tools/qnx650/target/qnx6/etc/services
+/etc/services = ${QNX_TARGET}/etc/services
 
-#/etc/inetd.conf = {
-#ftp        stream tcp nowait root  /proc/boot/ftpd           in.ftpd -l
-#telnet     stream tcp nowait root  /proc/boot/telnetd        in.telnetd
-#}
+/etc/inetd.conf = {
+ftp        stream tcp nowait root  /proc/boot/ftpd           in.ftpd -l
+telnet     stream tcp nowait root  /proc/boot/telnetd        in.telnetd
+}
 
-#/etc/ftpusers = {
-#/* Allow all users to connect to the ftp server */
-#* allow
-#}
+/etc/ftpusers = {
+/* Allow all users to connect to the ftp server */
+* allow
+}
 
-#/etc/ftpd.conf = {
+/etc/ftpd.conf = {
 #/* Make things a+rw by default */
-#umask all 0000
-#}
+umask all 0000
+}
 #
-#/etc/passwd = {
-#root::0:0:Superuser:/root:/bin/sh
-#ftp::14:80:FTP User:/tmp:
-#}
+/etc/passwd = {
+root::0:0:Superuser:/root:/bin/sh
+ftp::14:80:FTP User:/tmp:
+}
+
+# 组名:口令:组标识号:组内用户列表
+[uid=0 gid=0 perms=0644] /etc/group = {
+root:x:0:root
+sshd:x:6:
+qnxuser:x:qnxuser
+}
 
 
 ###########################################################################
